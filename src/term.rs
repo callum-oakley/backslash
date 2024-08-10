@@ -35,11 +35,53 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
 }
 
 /// A lambda calculus term with de Bruijn indices (starting at 0).
-#[derive(PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Bruijn {
     Var(usize),
-    Abs(Box<Bruijn>),
+    /// Always Some. Only optional so we can `take` it in `reduce`.
+    Abs(Box<Option<Bruijn>>),
     App(Box<Bruijn>, Box<Bruijn>),
+}
+
+impl Bruijn {
+    fn reduce(&mut self) {
+        fn substitute(term: &mut Bruijn, param: &Bruijn, depth: usize) {
+            match term {
+                Bruijn::Var(x) => {
+                    if *x == depth {
+                        *term = param.clone();
+                    }
+                }
+                Bruijn::Abs(body) => {
+                    substitute(body.as_mut().as_mut().unwrap(), param, depth + 1);
+                }
+                Bruijn::App(s, t) => {
+                    substitute(s, param, depth);
+                    substitute(t, param, depth);
+                }
+            }
+        }
+
+        fn reduce_once(term: &mut Bruijn) -> bool {
+            match term {
+                Bruijn::Var(_) => false,
+                Bruijn::Abs(body) => reduce_once(body.as_mut().as_mut().unwrap()),
+                Bruijn::App(s, t) => {
+                    if let Bruijn::Abs(body) = s.as_mut() {
+                        substitute(body.as_mut().as_mut().unwrap(), t, 0);
+                        // body is owned by term so is dropped when we re-assign. The None is never
+                        // reachable.
+                        *term = body.take().unwrap();
+                        true
+                    } else {
+                        reduce_once(s) || reduce_once(t)
+                    }
+                }
+            }
+        }
+
+        while reduce_once(self) {}
+    }
 }
 
 impl FromStr for Bruijn {
@@ -65,7 +107,7 @@ impl<'a> TryFrom<&Standard<'a>> for Bruijn {
                 }
                 Standard::Abs(arg, body) => {
                     scope.push(arg);
-                    let res = Bruijn::Abs(Box::new(try_from_with_scope(scope, body)?));
+                    let res = Bruijn::Abs(Box::new(Some(try_from_with_scope(scope, body)?)));
                     scope.pop();
                     Ok(res)
                 }
@@ -143,7 +185,7 @@ mod tests {
         }
 
         fn abs(body: Bruijn) -> Bruijn {
-            Bruijn::Abs(Box::new(body))
+            Bruijn::Abs(Box::new(Some(body)))
         }
 
         fn app(s: Bruijn, t: Bruijn) -> Bruijn {
@@ -158,5 +200,12 @@ mod tests {
                 abs(app(var(1), app(var(0), var(0))))
             ))
         )
+    }
+
+    #[test]
+    fn test_reduce() {
+        let mut term: Bruijn = r"(\x.x)(\x.x)".parse().unwrap();
+        term.reduce();
+        assert_eq!(term, r"\x.x".parse().unwrap());
     }
 }
