@@ -34,30 +34,44 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
     }
 }
 
-/// A lambda calculus term with de Bruijn indices (starting at 0).
+/// A lambda calculus term with de Bruijn indices (starting at 0). The Optionals are always Some,
+/// they're only optional so we can `take` them while reducing to avoid some clones.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Bruijn {
     Var(usize),
-    /// Always Some. Only optional so we can `take` it in `reduce`.
     Abs(Box<Option<Bruijn>>),
-    App(Box<Bruijn>, Box<Bruijn>),
+    App(Box<Bruijn>, Box<Option<Bruijn>>),
 }
 
 impl Bruijn {
     fn reduce(&mut self) {
-        fn substitute(term: &mut Bruijn, param: &Bruijn, depth: usize) {
+        fn substitute<'a>(
+            term: &'a mut Bruijn,
+            // Exactly one of param or param_ref will be Some. TODO can we enforce this? Cow is
+            // almost the right type but not quite.
+            param: &mut Option<Bruijn>,
+            param_ref: &mut Option<&'a Bruijn>,
+            depth: usize,
+        ) {
             match term {
                 Bruijn::Var(x) => {
                     if *x == depth {
-                        *term = param.clone();
+                        // If This is the first substitution, we can take out of param to avoid
+                        // cloning, otherwise we'll have to clone from param_ref.
+                        if param.is_some() {
+                            *term = param.take().unwrap();
+                            *param_ref = Some(term);
+                        } else {
+                            *term = param_ref.unwrap().clone();
+                        }
                     }
                 }
                 Bruijn::Abs(body) => {
-                    substitute(body.as_mut().as_mut().unwrap(), param, depth + 1);
+                    substitute(body.as_mut().as_mut().unwrap(), param, param_ref, depth + 1);
                 }
                 Bruijn::App(s, t) => {
-                    substitute(s, param, depth);
-                    substitute(t, param, depth);
+                    substitute(s, param, param_ref, depth);
+                    substitute(t.as_mut().as_mut().unwrap(), param, param_ref, depth);
                 }
             }
         }
@@ -68,13 +82,13 @@ impl Bruijn {
                 Bruijn::Abs(body) => reduce_once(body.as_mut().as_mut().unwrap()),
                 Bruijn::App(s, t) => {
                     if let Bruijn::Abs(body) = s.as_mut() {
-                        substitute(body.as_mut().as_mut().unwrap(), t, 0);
-                        // body is owned by term so is dropped when we re-assign. The None is never
-                        // reachable.
+                        // body and t are owned by term so are dropped when we re-assign. The None
+                        // are never reachable.
+                        substitute(body.as_mut().as_mut().unwrap(), t.as_mut(), &mut None, 0);
                         *term = body.take().unwrap();
                         true
                     } else {
-                        reduce_once(s) || reduce_once(t)
+                        reduce_once(s) || reduce_once(t.as_mut().as_mut().unwrap())
                     }
                 }
             }
@@ -113,7 +127,7 @@ impl<'a> TryFrom<&Standard<'a>> for Bruijn {
                 }
                 Standard::App(s, t) => Ok(Bruijn::App(
                     Box::new(try_from_with_scope(scope, s)?),
-                    Box::new(try_from_with_scope(scope, t)?),
+                    Box::new(Some(try_from_with_scope(scope, t)?)),
                 )),
             }
         }
@@ -189,7 +203,7 @@ mod tests {
         }
 
         fn app(s: Bruijn, t: Bruijn) -> Bruijn {
-            Bruijn::App(Box::new(s), Box::new(t))
+            Bruijn::App(Box::new(s), Box::new(Some(t)))
         }
 
         assert_eq!(r"\x y.x".parse::<Bruijn>().unwrap(), abs(abs(var(1))));
