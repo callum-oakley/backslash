@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use anyhow::{bail, Result};
 
@@ -43,8 +43,19 @@ pub enum Bruijn {
     App(Box<Bruijn>, Box<Option<Bruijn>>),
 }
 
+impl Display for Bruijn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Bruijn::Var(x) => write!(f, "{x}")?,
+            Bruijn::Abs(body) => write!(f, r"(\{})", body.as_ref().as_ref().unwrap())?,
+            Bruijn::App(s, t) => write!(f, r"({} {})", s, t.as_ref().as_ref().unwrap())?,
+        }
+        Ok(())
+    }
+}
+
 impl Bruijn {
-    fn reduce(&mut self) {
+    pub fn reduce(&mut self) {
         fn substitute<'a>(
             term: &'a mut Bruijn,
             // Exactly one of param or param_ref will be Some. TODO can we enforce this? Cow is
