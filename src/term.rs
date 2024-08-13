@@ -1,8 +1,8 @@
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 use anyhow::{bail, Result};
 
-use crate::parser;
+use crate::{constants, parser};
 
 /// A standard lambda calculus term with named variables and no sugar.
 #[derive(PartialEq, Debug)]
@@ -55,7 +55,44 @@ impl Display for Bruijn {
 }
 
 impl Bruijn {
-    pub fn reduce(&mut self) {
+    pub fn new(s: &str) -> Result<Self> {
+        Standard::new(s).and_then(|term| (&term).try_into())
+    }
+
+    pub fn abs(body: Self) -> Self {
+        Self::Abs(Box::new(Some(body)))
+    }
+
+    pub fn app(s: Self, t: Self) -> Self {
+        Self::App(Box::new(s), Box::new(Some(t)))
+    }
+
+    pub fn abs_into_body(self) -> Result<Self> {
+        let Self::Abs(body) = self else {
+            bail!("not an abstraction");
+        };
+        Ok(body.unwrap())
+    }
+
+    pub fn app_into_pair(self) -> Result<(Self, Self)> {
+        let Self::App(s, t) = self else {
+            bail!("not an application");
+        };
+        Ok((*s, (*t).unwrap()))
+    }
+
+    pub fn pair(a: Self, b: Self) -> Self {
+        Self::app(Self::app(constants::new_pair(), a), b).reduce()
+    }
+
+    pub fn unpair(self) -> (Self, Self) {
+        (
+            Self::app(constants::new_first(), self.clone()).reduce(),
+            Self::app(constants::new_rest(), self).reduce(),
+        )
+    }
+
+    pub fn reduce(mut self) -> Self {
         fn substitute<'a>(
             term: &'a mut Bruijn,
             // Exactly one of param or param_ref will be Some. TODO can we enforce this? Cow is
@@ -105,15 +142,9 @@ impl Bruijn {
             }
         }
 
-        while reduce_once(self) {}
-    }
-}
+        while reduce_once(&mut self) {}
 
-impl FromStr for Bruijn {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        Standard::new(s).and_then(|term| (&term).try_into())
+        self
     }
 }
 
@@ -132,13 +163,13 @@ impl<'a> TryFrom<&Standard<'a>> for Bruijn {
                 }
                 Standard::Abs(arg, body) => {
                     scope.push(arg);
-                    let res = Bruijn::Abs(Box::new(Some(try_from_with_scope(scope, body)?)));
+                    let res = Bruijn::abs(try_from_with_scope(scope, body)?);
                     scope.pop();
                     Ok(res)
                 }
-                Standard::App(s, t) => Ok(Bruijn::App(
-                    Box::new(try_from_with_scope(scope, s)?),
-                    Box::new(Some(try_from_with_scope(scope, t)?)),
+                Standard::App(s, t) => Ok(Bruijn::app(
+                    try_from_with_scope(scope, s)?,
+                    try_from_with_scope(scope, t)?,
                 )),
             }
         }
@@ -205,32 +236,28 @@ mod tests {
 
     #[test]
     fn test_bruijn() {
-        fn var(var: usize) -> Bruijn {
-            Bruijn::Var(var)
-        }
-
-        fn abs(body: Bruijn) -> Bruijn {
-            Bruijn::Abs(Box::new(Some(body)))
-        }
-
-        fn app(s: Bruijn, t: Bruijn) -> Bruijn {
-            Bruijn::App(Box::new(s), Box::new(Some(t)))
-        }
-
-        assert_eq!(r"\x y.x".parse::<Bruijn>().unwrap(), abs(abs(var(1))));
         assert_eq!(
-            r"\g.(\x.g (x x)) (\x.g (x x))".parse::<Bruijn>().unwrap(),
-            abs(app(
-                abs(app(var(1), app(var(0), var(0)))),
-                abs(app(var(1), app(var(0), var(0))))
+            Bruijn::new(r"\x y.x").unwrap(),
+            Bruijn::abs(Bruijn::abs(Bruijn::Var(1)))
+        );
+        assert_eq!(
+            Bruijn::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
+            Bruijn::abs(Bruijn::app(
+                Bruijn::abs(Bruijn::app(
+                    Bruijn::Var(1),
+                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0))
+                )),
+                Bruijn::abs(Bruijn::app(
+                    Bruijn::Var(1),
+                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0))
+                ))
             ))
         )
     }
 
     #[test]
     fn test_reduce() {
-        let mut term: Bruijn = r"(\x.x)(\x.x)".parse().unwrap();
-        term.reduce();
-        assert_eq!(term, r"\x.x".parse().unwrap());
+        let term = Bruijn::new(r"(\x.x)(\x.x)").unwrap().reduce();
+        assert_eq!(term, Bruijn::new(r"\x.x").unwrap());
     }
 }

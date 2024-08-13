@@ -1,14 +1,21 @@
-use lazy_static::lazy_static;
-
 use crate::Bruijn;
 
-lazy_static! {
-    pub static ref TRUE: Bruijn = r"\x y.x".parse().unwrap();
-    pub static ref FALSE: Bruijn = r"\x y.y".parse().unwrap();
+pub fn new_true() -> Bruijn {
+    Bruijn::new(r"\x y.x").unwrap()
+}
 
-    // Pairs and lists (TODO re-use TRUE and FALSE in the below when that's supported).
-    pub static ref PAIR: Bruijn = r"\x y s.s x y".parse().unwrap();
-    pub static ref FIRST: Bruijn = r"\p.p \x y.x".parse().unwrap();
-    pub static ref REST: Bruijn = r"\p.p \x y.y".parse().unwrap();
-    pub static ref NIL: Bruijn = r"\x y.y".parse().unwrap();
+pub fn new_false() -> Bruijn {
+    Bruijn::new(r"\x y.y").unwrap()
+}
+
+pub fn new_pair() -> Bruijn {
+    Bruijn::new(r"\x y s.s x y").unwrap()
+}
+
+pub fn new_first() -> Bruijn {
+    Bruijn::new(r"\p.p \x y.x").unwrap()
+}
+
+pub fn new_rest() -> Bruijn {
+    Bruijn::new(r"\p.p \x y.y").unwrap()
 }
