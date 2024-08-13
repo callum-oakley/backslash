@@ -1,4 +1,4 @@
-use crate::Bruijn;
+use crate::term::Bruijn;
 
 pub fn new_true() -> Bruijn {
     Bruijn::new(r"\x y.x").unwrap()

@@ -1,12 +1,8 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Stdin};
 
 use anyhow::{bail, Result};
 
-use crate::{constants, Bruijn};
-
-pub fn input() -> impl Iterator<Item = Result<Bruijn>> {
-    io::stdin().bytes().map(|byte| Ok(byte.map(Bruijn::from)?))
-}
+use crate::{constants, term::Bruijn};
 
 impl From<u8> for Bruijn {
     fn from(byte: u8) -> Self {
@@ -41,6 +37,34 @@ impl TryInto<u8> for Bruijn {
             }
         }
 
+        Ok(res)
+    }
+}
+
+impl TryFrom<Stdin> for Bruijn {
+    type Error = anyhow::Error;
+
+    fn try_from(stdin: Stdin) -> Result<Self> {
+        fn from_bytes(bytes: &mut impl Iterator<Item = io::Result<u8>>) -> Result<Bruijn> {
+            match bytes.next() {
+                Some(byte) => Ok(Bruijn::pair(byte?.into(), from_bytes(bytes)?)),
+                None => Ok(constants::new_false()),
+            }
+        }
+        from_bytes(&mut stdin.bytes())
+    }
+}
+
+impl TryInto<Vec<u8>> for Bruijn {
+    type Error = anyhow::Error;
+
+    fn try_into(mut self) -> Result<Vec<u8>> {
+        let mut res = Vec::new();
+        while self != constants::new_false() {
+            let (first, rest) = self.unpair();
+            self = rest;
+            res.push(first.try_into()?);
+        }
         Ok(res)
     }
 }

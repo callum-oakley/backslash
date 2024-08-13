@@ -1,6 +1,4 @@
 mod constants;
-mod io;
+pub mod io;
 mod parser;
-mod term;
-
-pub use term::Bruijn;
+pub mod term;
