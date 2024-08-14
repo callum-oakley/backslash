@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use anyhow::{bail, Result};
 
-use crate::{constants, parser};
+use crate::parser;
 
 /// A standard lambda calculus term with named variables and no sugar.
 #[derive(PartialEq, Debug)]
@@ -79,17 +79,6 @@ impl Bruijn {
             bail!("not an application");
         };
         Ok((*s, (*t).unwrap()))
-    }
-
-    pub fn pair(a: Self, b: Self) -> Self {
-        Self::app(Self::app(constants::new_pair(), a), b).reduce()
-    }
-
-    pub fn unpair(self) -> (Self, Self) {
-        (
-            Self::app(constants::new_first(), self.clone()).reduce(),
-            Self::app(constants::new_rest(), self).reduce(),
-        )
     }
 
     pub fn reduce(mut self) -> Self {
