@@ -1,20 +1,23 @@
 use anyhow::Result;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, take_while1},
+    bytes::complete::{is_not, tag, take_while1},
     character::complete::{char, multispace1},
-    combinator::{eof, map, value},
+    combinator::{eof, map, value, verify},
     multi::{many0, many1, many_m_n},
-    sequence::{delimited, pair, terminated},
+    sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
+static RESERVED: [&str; 3] = ["let", "=", "in"];
+
 /// Represents a term as written: multiple argument abstractions, two or more terms applied in
-/// sequence, let bindings (TODO).
+/// sequence, let bindings.
 pub enum Term<'a> {
     Var(&'a str),
     Abs(Vec<&'a str>, Box<Term<'a>>),
     App(Vec<Term<'a>>),
+    Let(&'a str, Box<Term<'a>>, Box<Term<'a>>),
 }
 
 impl<'a> Term<'a> {
@@ -41,9 +44,10 @@ where
 }
 
 fn identifier(input: &str) -> IResult<&str, &str> {
-    ws(take_while1(|c: char| {
-        !c.is_whitespace() && !r"\.()".contains(c)
-    }))(input)
+    ws(verify(
+        take_while1(|c: char| !c.is_whitespace() && !r"\.()".contains(c)),
+        |s| !RESERVED.contains(&s),
+    ))(input)
 }
 
 fn variable(input: &str) -> IResult<&str, Term> {
@@ -59,9 +63,24 @@ fn abstraction(input: &str) -> IResult<&str, Term> {
 
 fn application(input: &str) -> IResult<&str, Term> {
     map(
-        many_m_n(2, usize::MAX, alt((bracketed, abstraction, variable))),
+        many_m_n(
+            2,
+            usize::MAX,
+            alt((bracketed, abstraction, variable, binding)),
+        ),
         Term::App,
     )(input)
+}
+
+fn binding(input: &str) -> IResult<&str, Term> {
+    ws(map(
+        tuple((
+            preceded(tag("let"), identifier),
+            preceded(char('='), term),
+            preceded(tag("in"), term),
+        )),
+        |(v, t, s)| Term::Let(v, Box::new(t), Box::new(s)),
+    ))(input)
 }
 
 fn bracketed(input: &str) -> IResult<&str, Term> {
@@ -69,5 +88,5 @@ fn bracketed(input: &str) -> IResult<&str, Term> {
 }
 
 fn term(input: &str) -> IResult<&str, Term> {
-    alt((application, bracketed, abstraction, variable))(input)
+    alt((application, bracketed, abstraction, variable, binding))(input)
 }

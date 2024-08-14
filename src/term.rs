@@ -16,20 +16,32 @@ impl<'a> Standard<'a> {
     fn new(input: &'a str) -> Result<Self> {
         parser::Term::new(input).map(|term| (&term).into())
     }
+
+    #[must_use]
+    pub fn abs(arg: &'a str, body: Self) -> Self {
+        Self::Abs(arg, Box::new(body))
+    }
+
+    #[must_use]
+    pub fn app(s: Self, t: Self) -> Self {
+        Self::App(Box::new(s), Box::new(t))
+    }
 }
 
 impl<'a> From<&parser::Term<'a>> for Standard<'a> {
     fn from(term: &parser::Term<'a>) -> Self {
         match term {
             parser::Term::Var(x) => Standard::Var(x),
-            parser::Term::Abs(args, body) => {
-                args.iter().rev().fold(body.as_ref().into(), |body, arg| {
-                    Standard::Abs(arg, Box::new(body))
-                })
+            parser::Term::Abs(args, body) => args
+                .iter()
+                .rev()
+                .fold(body.as_ref().into(), |body, arg| Standard::abs(arg, body)),
+            parser::Term::App(terms) => terms[1..]
+                .iter()
+                .fold((&terms[0]).into(), |s, t| Standard::app(s, t.into())),
+            parser::Term::Let(x, s, t) => {
+                Standard::app(Standard::abs(x, t.as_ref().into()), s.as_ref().into())
             }
-            parser::Term::App(terms) => terms[1..].iter().fold((&terms[0]).into(), |s, t| {
-                Standard::App(Box::new(s), Box::new(t.into()))
-            }),
         }
     }
 }
@@ -176,53 +188,78 @@ mod tests {
 
     #[test]
     fn test_standard() {
-        fn var(var: &str) -> Standard {
-            Standard::Var(var)
-        }
-
-        fn abs<'a>(var: &'a str, body: Standard<'a>) -> Standard<'a> {
-            Standard::Abs(var, Box::new(body))
-        }
-
-        fn app<'a>(s: Standard<'a>, t: Standard<'a>) -> Standard<'a> {
-            Standard::App(Box::new(s), Box::new(t))
-        }
-
-        assert_eq!(Standard::new("x").unwrap(), var("x"));
-        assert_eq!(Standard::new(r"\x.x").unwrap(), abs("x", var("x")));
-        assert_eq!(Standard::new("x y").unwrap(), app(var("x"), var("y")));
+        assert_eq!(Standard::new("x").unwrap(), Standard::Var("x"));
+        assert_eq!(
+            Standard::new(r"\x.x").unwrap(),
+            Standard::abs("x", Standard::Var("x"))
+        );
+        assert_eq!(
+            Standard::new("x y").unwrap(),
+            Standard::app(Standard::Var("x"), Standard::Var("y"))
+        );
         assert_eq!(
             Standard::new(r"\x.\y.x y").unwrap(),
-            abs("x", abs("y", app(var("x"), var("y")))),
+            Standard::abs(
+                "x",
+                Standard::abs("y", Standard::app(Standard::Var("x"), Standard::Var("y")))
+            ),
         );
         assert_eq!(
             Standard::new("x y z").unwrap(),
-            app(app(var("x"), var("y")), var("z")),
+            Standard::app(
+                Standard::app(Standard::Var("x"), Standard::Var("y")),
+                Standard::Var("z")
+            ),
         );
         assert_eq!(
             Standard::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
-            abs(
+            Standard::abs(
                 "g",
-                app(
-                    abs("x", app(var("g"), app(var("x"), var("x")))),
-                    abs("x", app(var("g"), app(var("x"), var("x")))),
+                Standard::app(
+                    Standard::abs(
+                        "x",
+                        Standard::app(
+                            Standard::Var("g"),
+                            Standard::app(Standard::Var("x"), Standard::Var("x"))
+                        )
+                    ),
+                    Standard::abs(
+                        "x",
+                        Standard::app(
+                            Standard::Var("g"),
+                            Standard::app(Standard::Var("x"), Standard::Var("x"))
+                        )
+                    ),
                 ),
             ),
         );
         assert_eq!(
             Standard::new(r"\x y z.x y z").unwrap(),
-            abs(
+            Standard::abs(
                 "x",
-                abs("y", abs("z", app(app(var("x"), var("y")), var("z")))),
+                Standard::abs(
+                    "y",
+                    Standard::abs(
+                        "z",
+                        Standard::app(
+                            Standard::app(Standard::Var("x"), Standard::Var("y")),
+                            Standard::Var("z")
+                        )
+                    )
+                ),
             )
         );
         assert_eq!(
             Standard::new(r"\_.x y").unwrap(),
-            abs("_", app(var("x"), var("y")))
+            Standard::abs("_", Standard::app(Standard::Var("x"), Standard::Var("y")))
         );
         assert_eq!(
             Standard::new("# The identity:\n\\x.x").unwrap(),
-            abs("x", var("x")),
+            Standard::abs("x", Standard::Var("x")),
+        );
+        assert_eq!(
+            Standard::new(r"let a = b in c").unwrap(),
+            Standard::app(Standard::abs("a", Standard::Var("c")), Standard::Var("b")),
         );
     }
 
