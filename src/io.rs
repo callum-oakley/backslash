@@ -44,7 +44,7 @@ impl TryInto<u8> for Bruijn {
             if first == constants::new_true() {
                 res += 1 << i;
             } else if first != constants::new_false() {
-                bail!("neither true nor false");
+                bail!("not a bit");
             }
         }
 

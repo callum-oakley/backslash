@@ -34,8 +34,8 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
     }
 }
 
-/// A lambda calculus term with de Bruijn indices (starting at 0). The Optionals are always Some,
-/// they're only optional so we can `take` them while reducing to avoid some clones.
+/// A lambda calculus term with de Bruijn indices (starting at 0). The Options are always Some.
+/// They're only optional so we can `take` them while reducing to avoid some clones.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Bruijn {
     Var(usize),
@@ -96,7 +96,7 @@ impl Bruijn {
             match term {
                 Bruijn::Var(x) => {
                     if *x == depth {
-                        // If This is the first substitution, we can take out of param to avoid
+                        // If this is the first substitution, we can take out of param to avoid
                         // cloning, otherwise we'll have to clone from param_ref.
                         if param.is_some() {
                             *term = param.take().unwrap();
@@ -244,7 +244,7 @@ mod tests {
                     Bruijn::app(Bruijn::Var(0), Bruijn::Var(0))
                 ))
             ))
-        )
+        );
     }
 
     #[test]
