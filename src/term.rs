@@ -59,10 +59,12 @@ impl Bruijn {
         Standard::new(s).and_then(|term| (&term).try_into())
     }
 
+    #[must_use]
     pub fn abs(body: Self) -> Self {
         Self::Abs(Box::new(Some(body)))
     }
 
+    #[must_use]
     pub fn app(s: Self, t: Self) -> Self {
         Self::App(Box::new(s), Box::new(Some(t)))
     }
@@ -81,6 +83,7 @@ impl Bruijn {
         Ok((*s, (*t).unwrap()))
     }
 
+    #[must_use]
     pub fn reduce(mut self) -> Self {
         fn substitute<'a>(
             term: &'a mut Bruijn,

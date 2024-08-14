@@ -3,9 +3,11 @@ use std::{
     io::{self, Write},
 };
 
+use anyhow::Result;
+
 use backslash::term::Bruijn;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let term = Bruijn::new(&args().collect::<Vec<_>>()[1])?;
     let input: Bruijn = io::stdin().try_into()?;
     let output: Vec<u8> = Bruijn::app(term, input).reduce().try_into()?;

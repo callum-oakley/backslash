@@ -20,7 +20,7 @@ pub enum Term<'a> {
 impl<'a> Term<'a> {
     pub fn new(input: &'a str) -> Result<Self> {
         Ok(terminated(term, eof)(input)
-            .map_err(|err| err.to_owned())?
+            .map_err(nom::Err::<nom::error::Error<&str>>::to_owned)?
             .1)
     }
 }
