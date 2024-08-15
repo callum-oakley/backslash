@@ -1,0 +1,43 @@
+# Scott encoding best encoding
+
+# Booleans
+
+let true = \trueC falseC.trueC in
+
+let false = \trueC falseC.falseC in
+
+# Functions
+
+let id = \x.x in
+
+let comp = \f g.\x.f(g x) in
+
+let flip = \f.\x y.f y x in
+
+let fix = \f.(\x.f(x x))(\x.f(x x)) in
+
+# Lists
+
+let nil = \nilC consC.nilC in
+
+let cons = \head tail.\nilC consC.consC head tail in
+
+let head = \list.list
+    nil
+    \head tail.head in
+
+let tail = \list.list
+    nil
+    \head tail.tail in
+
+let foldr = \f init list.list
+    init
+    \head tail.f head (foldr f init tail) in
+
+let foldl = \f init list.list
+    init
+    \head tail.foldl f (f init head) tail in
+
+let rev = foldl (flip cons) nil in
+
+let map = \f.foldr (comp cons f) nil in # TODO test

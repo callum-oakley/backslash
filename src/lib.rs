@@ -5,7 +5,6 @@
 use anyhow::Result;
 use term::Bruijn;
 
-mod constants;
 mod io;
 mod parser;
 mod term;

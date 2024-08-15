@@ -37,6 +37,10 @@ impl<'a> Standard<'a> {
     pub fn app(s: Self, t: Self) -> Self {
         Self::App(Box::new(s), Box::new(t))
     }
+
+    fn new_fix() -> Self {
+        Standard::new(r"\f.(\x.f(x x))(\x.f(x x))").unwrap()
+    }
 }
 
 impl<'a> From<&parser::Term<'a>> for Standard<'a> {
@@ -50,9 +54,10 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
             parser::Term::App(terms) => terms[1..]
                 .iter()
                 .fold((&terms[0]).into(), |s, t| Standard::app(s, t.into())),
-            parser::Term::Let(x, s, t) => {
-                Standard::app(Standard::abs(x, t.as_ref().into()), s.as_ref().into())
-            }
+            parser::Term::Let(x, s, t) => Standard::app(
+                Standard::abs(x, t.as_ref().into()),
+                Standard::app(Standard::new_fix(), Standard::abs(x, s.as_ref().into())),
+            ),
         }
     }
 }
@@ -276,10 +281,6 @@ mod tests {
         assert_eq!(
             Standard::new("# The identity:\n\\x.x").unwrap(),
             Standard::abs("x", Standard::Var("x")),
-        );
-        assert_eq!(
-            Standard::new(r"let a = b in c").unwrap(),
-            Standard::app(Standard::abs("a", Standard::Var("c")), Standard::Var("b")),
         );
     }
 
