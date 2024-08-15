@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use anyhow::{bail, Result};
 
@@ -10,6 +10,17 @@ enum Standard<'a> {
     Var(&'a str),
     Abs(&'a str, Box<Standard<'a>>),
     App(Box<Standard<'a>>, Box<Standard<'a>>),
+}
+
+impl<'a> Display for Standard<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Standard::Var(x) => write!(f, "{x}")?,
+            Standard::Abs(arg, body) => write!(f, r"(\{arg}.{body})")?,
+            Standard::App(s, t) => write!(f, "({s} {t})")?,
+        }
+        Ok(())
+    }
 }
 
 impl<'a> Standard<'a> {
@@ -46,6 +57,33 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
     }
 }
 
+impl From<&Bruijn> for Standard<'static> {
+    fn from(term: &Bruijn) -> Self {
+        fn from_with_scope(scope: usize, term: &Bruijn) -> Standard<'static> {
+            static VARS: &str = "abcdefghijklmnopqrstuvwyxz";
+            assert!(scope < 26, "term is too deeply nested");
+
+            match term {
+                Bruijn::Var(x) => {
+                    assert!(*x < scope, "term isn't closed");
+                    let i = scope - x - 1;
+                    Standard::Var(&VARS[i..=i])
+                }
+                Bruijn::Abs(body) => Standard::abs(
+                    &VARS[scope..=scope],
+                    from_with_scope(scope + 1, body.as_ref().as_ref().unwrap()),
+                ),
+                Bruijn::App(s, t) => Standard::app(
+                    from_with_scope(scope, s),
+                    from_with_scope(scope, t.as_ref().as_ref().unwrap()),
+                ),
+            }
+        }
+
+        from_with_scope(0, term)
+    }
+}
+
 /// A lambda calculus term with de Bruijn indices (starting at 0). The Options are always Some.
 /// They're only optional so we can `take` them while reducing to avoid some clones.
 #[derive(Clone, PartialEq, Debug)]
@@ -56,13 +94,9 @@ pub enum Bruijn {
 }
 
 impl Display for Bruijn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Bruijn::Var(x) => write!(f, "{x}")?,
-            Bruijn::Abs(body) => write!(f, r"(\{})", body.as_ref().as_ref().unwrap())?,
-            Bruijn::App(s, t) => write!(f, r"({} {})", s, t.as_ref().as_ref().unwrap())?,
-        }
-        Ok(())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let term: Standard = self.into();
+        term.fmt(f)
     }
 }
 
@@ -267,20 +301,24 @@ mod tests {
     fn test_bruijn() {
         assert_eq!(
             Bruijn::new(r"\x y.x").unwrap(),
-            Bruijn::abs(Bruijn::abs(Bruijn::Var(1)))
+            Bruijn::abs(Bruijn::abs(Bruijn::Var(1))),
         );
         assert_eq!(
             Bruijn::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
             Bruijn::abs(Bruijn::app(
                 Bruijn::abs(Bruijn::app(
                     Bruijn::Var(1),
-                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0))
+                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0)),
                 )),
                 Bruijn::abs(Bruijn::app(
                     Bruijn::Var(1),
-                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0))
+                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0)),
                 ))
             ))
+        );
+        assert_eq!(
+            format!("{}", Bruijn::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap()),
+            r"(\a.((\b.(a (b b))) (\b.(a (b b)))))",
         );
     }
 
