@@ -1,5 +1,3 @@
-use std::io::{self, Read, Stdin};
-
 use anyhow::{bail, Result};
 
 use crate::{constants, term::Bruijn};
@@ -52,17 +50,15 @@ impl TryInto<u8> for Bruijn {
     }
 }
 
-impl TryFrom<Stdin> for Bruijn {
-    type Error = anyhow::Error;
-
-    fn try_from(stdin: Stdin) -> Result<Self> {
-        fn from_bytes(bytes: &mut impl Iterator<Item = io::Result<u8>>) -> Result<Bruijn> {
+impl From<&[u8]> for Bruijn {
+    fn from(bytes: &[u8]) -> Self {
+        fn from_iter(bytes: &mut impl Iterator<Item = u8>) -> Bruijn {
             match bytes.next() {
-                Some(byte) => Ok(pair(byte?.into(), from_bytes(bytes)?)),
-                None => Ok(constants::new_false()),
+                Some(byte) => pair(byte.into(), from_iter(bytes)),
+                None => constants::new_false(),
             }
         }
-        from_bytes(&mut stdin.bytes())
+        from_iter(&mut bytes.iter().copied())
     }
 }
 
