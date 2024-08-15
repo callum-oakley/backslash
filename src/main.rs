@@ -1,5 +1,6 @@
 use std::{
     env,
+    fs::File,
     io::{self, Read, Write},
 };
 
@@ -11,12 +12,14 @@ fn main() -> Result<()> {
     if args.len() != 2 {
         bail!("Usage: bs FILE");
     }
-    let term = &args[1];
+
+    let mut term = String::new();
+    File::open(&args[1])?.read_to_string(&mut term)?;
 
     let mut input = Vec::new();
     io::stdin().read_to_end(&mut input)?;
 
-    let output = run(term, &input)?;
+    let output = run(&term, &input)?;
     io::stdout().write_all(&output)?;
 
     Ok(())
