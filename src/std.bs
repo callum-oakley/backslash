@@ -1,12 +1,10 @@
-# Scott encoding best encoding
-
-# Booleans
+# Bool
 
 let true = \trueC falseC.trueC in
 
 let false = \trueC falseC.falseC in
 
-# Functions
+# Function
 
 let id = \x.x in
 
@@ -16,7 +14,7 @@ let flip = \f.\x y.f y x in
 
 let fix = \f.(\x.f(x x))(\x.f(x x)) in
 
-# Lists
+# List
 
 let nil = \nilC consC.nilC in
 
@@ -40,4 +38,4 @@ let foldl = \f init list.list
 
 let rev = foldl (flip cons) nil in
 
-let map = \f.foldr (comp cons f) nil in # TODO test
+let map = \f.foldr (comp cons f) nil in
