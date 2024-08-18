@@ -60,34 +60,34 @@ let rev = foldl (flip cons) nil in
 
 # TODO omit definitions of 0, 1, and -1 once we have syntax sugar for numbers.
 
-let 0 = \z x- x0 x+.z in
-
-let 1 = \z x- x0 x+.x+ in
-
-let -1 = \z x- x0 x+.x- in
-
-let up- = \n z x- x0 x+.x- (n z x- x0 x+) in
-
-let up0 = \n z x- x0 x+.x0 (n z x- x0 x+) in
-
-let up+ = \n z x- x0 x+.x+ (n z x- x0 x+) in
-
-let zero? = \n.n true (\x.false) id (\x.false) in
-
-let succ =
-    let Z = pair 0 1 in
-    let A- = \p.p (\n m.pair (up- n) (up0 n)) in
-    let A0 = \p.p (\n m.pair (up0 n) (up+ n)) in
-    let A+ = \p.p (\n m.pair (up+ n) (up- m)) in
-    \n.snd (n Z A- A0 A+) in
-
-let pred =
-    let Z = pair 0 -1 in
-    let A- = \p.p (\n m.pair (up- n) (up+ m)) in
-    let A0 = \p.p (\n m.pair (up0 n) (up- n)) in
-    let A+ = \p.p (\n m.pair (up+ n) (up0 n)) in
-    \n.snd (n Z A- A0 A+) in
-
-let neg = \n z x- x0 x+.n z x+ x0 x- in
+# let 0 = \z x- x0 x+.z in
+#
+# let 1 = \z x- x0 x+.x+ in
+#
+# let -1 = \z x- x0 x+.x- in
+#
+# let up- = \n z x- x0 x+.x- (n z x- x0 x+) in
+#
+# let up0 = \n z x- x0 x+.x0 (n z x- x0 x+) in
+#
+# let up+ = \n z x- x0 x+.x+ (n z x- x0 x+) in
+#
+# let zero? = \n.n true (\x.false) id (\x.false) in
+#
+# let succ =
+#     let Z = pair 0 1 in
+#     let A- = \p.p (\n m.pair (up- n) (up0 n)) in
+#     let A0 = \p.p (\n m.pair (up0 n) (up+ n)) in
+#     let A+ = \p.p (\n m.pair (up+ n) (up- m)) in
+#     \n.snd (n Z A- A0 A+) in
+#
+# let pred =
+#     let Z = pair 0 -1 in
+#     let A- = \p.p (\n m.pair (up- n) (up+ m)) in
+#     let A0 = \p.p (\n m.pair (up0 n) (up- n)) in
+#     let A+ = \p.p (\n m.pair (up+ n) (up0 n)) in
+#     \n.snd (n Z A- A0 A+) in
+#
+# let neg = \n z x- x0 x+.n z x+ x0 x- in
 
 # TODO binary functions
