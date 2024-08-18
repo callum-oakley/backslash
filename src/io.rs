@@ -1,13 +1,43 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 
 use crate::term::Bruijn;
 
-fn new_true() -> Bruijn {
-    Bruijn::new(r"\trueC falseC.trueC").unwrap()
+impl From<u8> for Bruijn {
+    fn from(mut byte: u8) -> Self {
+        let mut balanced_ternary = [0i8; 6];
+        for i in (0..6).rev() {
+            balanced_ternary[i] += i8::try_from(byte % 3).unwrap();
+            if balanced_ternary[i] > 1 {
+                balanced_ternary[i] -= 3;
+                balanced_ternary[i - 1] = 1;
+            }
+            byte /= 3;
+        }
+
+        // Encode as \z x- x0 x1.body (so z, x-, x0, x1 have Bruijn indices 3, 2, 1, 0)
+        let mut body = Bruijn::Var(3);
+        for trit in balanced_ternary.into_iter().skip_while(|&trit| trit == 0) {
+            body = Bruijn::app(
+                match trit {
+                    -1 => Bruijn::Var(2),
+                    0 => Bruijn::Var(1),
+                    1 => Bruijn::Var(0),
+                    _ => panic!("invalid trit: {trit}"),
+                },
+                body,
+            );
+        }
+
+        Bruijn::abs(Bruijn::abs(Bruijn::abs(Bruijn::abs(body))))
+    }
 }
 
-fn new_false() -> Bruijn {
-    Bruijn::new(r"\trueC falseC.falseC").unwrap()
+impl TryInto<u8> for Bruijn {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<u8> {
+        todo!()
+    }
 }
 
 fn new_nil() -> Bruijn {
@@ -35,43 +65,6 @@ fn uncons(term: Bruijn) -> (Bruijn, Bruijn) {
         Bruijn::app(new_head(), term.clone()).reduce(),
         Bruijn::app(new_tail(), term).reduce(),
     )
-}
-
-impl From<u8> for Bruijn {
-    fn from(byte: u8) -> Self {
-        let mut res = new_nil();
-        for i in 0..8 {
-            res = cons(
-                if (byte >> i) % 2 == 0 {
-                    new_false()
-                } else {
-                    new_true()
-                },
-                res,
-            );
-        }
-        res
-    }
-}
-
-impl TryInto<u8> for Bruijn {
-    type Error = anyhow::Error;
-
-    fn try_into(mut self) -> Result<u8> {
-        let mut res = 0;
-        for i in (0..8).rev() {
-            let (first, rest) = uncons(self);
-            self = rest;
-
-            if first == new_true() {
-                res += 1 << i;
-            } else if first != new_false() {
-                bail!("not a bit");
-            }
-        }
-
-        Ok(res)
-    }
 }
 
 impl From<&[u8]> for Bruijn {
@@ -106,26 +99,17 @@ mod tests {
 
     #[test]
     fn test_encoding_and_decoding() {
-        // '\' is 0x5c which is 0b01011100
         assert_eq!(
-            Bruijn::from(b'\\'),
-            cons(
-                new_false(),
-                cons(
-                    new_true(),
-                    cons(
-                        new_false(),
-                        cons(
-                            new_true(),
-                            cons(
-                                new_true(),
-                                cons(new_true(), cons(new_false(), cons(new_false(), new_nil())))
-                            )
-                        )
-                    )
-                )
-            ),
+            Bruijn::from(2).to_string(),
+            r"(\a.(\b.(\c.(\d.(b (d a))))))",
         );
-        assert_eq!(TryInto::<u8>::try_into(Bruijn::from(b'\\')).unwrap(), b'\\');
+        assert_eq!(
+            Bruijn::from(5).to_string(),
+            r"(\a.(\b.(\c.(\d.(b (b (d a)))))))",
+        );
+        assert_eq!(
+            Bruijn::from(0xff).to_string(),
+            r"(\a.(\b.(\c.(\d.(c (d (d (c (c (d a))))))))))",
+        );
     }
 }
