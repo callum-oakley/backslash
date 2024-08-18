@@ -6,4 +6,5 @@ fn assert_run(term: &str, input: &str, output: &str) {
 fn end_to_end() {
     assert_run("id", "hello world", "hello world");
     assert_run("rev", "hello world", "dlrow olleh");
+    assert_run("map inc", "hello world", "ifmmp!xpsme");
 }
