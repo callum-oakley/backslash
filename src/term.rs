@@ -120,6 +120,22 @@ impl Bruijn {
         Self::App(Box::new(s), Box::new(Some(t)))
     }
 
+    pub fn try_unabs(self) -> Result<Self> {
+        if let Self::Abs(body) = self {
+            Ok((*body).unwrap())
+        } else {
+            bail!("not an abstraction");
+        }
+    }
+
+    pub fn try_unapp(self) -> Result<(Self, Self)> {
+        if let Self::App(s, t) = self {
+            Ok((*s, (*t).unwrap()))
+        } else {
+            bail!("not an application");
+        }
+    }
+
     #[must_use]
     pub fn reduce(mut self) -> Self {
         fn substitute<'a>(

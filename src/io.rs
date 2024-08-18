@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use crate::term::Bruijn;
 
@@ -35,8 +35,36 @@ impl From<u8> for Bruijn {
 impl TryInto<u8> for Bruijn {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<u8> {
-        todo!()
+    fn try_into(mut self) -> Result<u8> {
+        let mut balanced_ternary = [0i8; 6];
+        self = self.try_unabs()?.try_unabs()?.try_unabs()?.try_unabs()?;
+        for i in (0..6).rev() {
+            let (s, t) = self.try_unapp()?;
+            balanced_ternary[i] = match s {
+                Bruijn::Var(2) => -1,
+                Bruijn::Var(1) => 0,
+                Bruijn::Var(0) => 1,
+                _ => bail!("malformed byte"),
+            };
+            self = t;
+            if self == Bruijn::Var(3) {
+                break;
+            }
+        }
+        assert!(self == Bruijn::Var(3), "too many trits");
+
+        // TODO this will currently underflow if balanced_ternary represents a negative number
+        let mut res = 0;
+        for (i, trit) in balanced_ternary.into_iter().rev().enumerate().rev() {
+            match trit {
+                -1 => res -= 3_u8.pow(i.try_into().unwrap()),
+                0 => (),
+                1 => res += 3_u8.pow(i.try_into().unwrap()),
+                _ => panic!("invalid trit: {trit}"),
+            }
+        }
+
+        Ok(res)
     }
 }
 
@@ -111,5 +139,8 @@ mod tests {
             Bruijn::from(0xff).to_string(),
             r"(\a.(\b.(\c.(\d.(c (d (d (c (c (d a))))))))))",
         );
+        assert_eq!(TryInto::<u8>::try_into(Bruijn::from(2)).unwrap(), 2);
+        assert_eq!(TryInto::<u8>::try_into(Bruijn::from(5)).unwrap(), 5);
+        assert_eq!(TryInto::<u8>::try_into(Bruijn::from(0xff)).unwrap(), 0xff);
     }
 }
