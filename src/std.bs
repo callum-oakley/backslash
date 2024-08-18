@@ -1,24 +1,38 @@
 # Bool
 
-let true = \trueC falseC.trueC in
+let true = \iftrue iffalse.iftrue in
 
-let false = \trueC falseC.falseC in
+let false = \iftrue iffalse.iffalse in
+
+let not = \a.a false true in
+
+let and = \a b.a b false in
+
+let or = \a b.a true b in
 
 # Function
 
 let id = \x.x in
 
-let comp = \f g.\x.f(g x) in
+let comp = \f g x.f (g x) in
 
-let flip = \f.\x y.f y x in
+let flip = \f x y.f y x in
 
-let fix = \f.(\x.f(x x))(\x.f(x x)) in
+let fix = \f.(\x.f (x x))(\x.f (x x)) in
+
+# Pair
+
+let pair = \a b ifpair.ifpair a b in
+
+let fst = \pair.pair \a b.a in
+
+let snd = \pair.pair \a b.b in
 
 # List
 
-let nil = \nilC consC.nilC in
+let nil = \ifnil ifcons.ifnil in
 
-let cons = \head tail.\nilC consC.consC head tail in
+let cons = \head tail ifnil ifcons.ifcons head tail in
 
 let head = \list.list
     nil
@@ -36,6 +50,44 @@ let foldl = \f init list.list
     init
     \head tail.foldl f (f init head) tail in
 
+let map = \f.foldr (comp cons f) nil in
+
 let rev = foldl (flip cons) nil in
 
-let map = \f.foldr (comp cons f) nil in
+# Int
+# Balanced ternary as described in:
+# Mogensen, T.Æ. (2001). An Investigation of Compact and Efficient Number Representations in the Pure Lambda Calculus. In: Bjørner, D., Broy, M., Zamulin, A.V. (eds) Perspectives of System Informatics. PSI 2001. Lecture Notes in Computer Science, vol 2244. Springer, Berlin, Heidelberg. https://doi.org/10.1007/3-540-45575-2_20
+
+# TODO omit definitions of 0, 1, and -1 once we have syntax sugar for numbers.
+
+let 0 = \z x- x0 x+.z in
+
+let 1 = \z x- x0 x+.x+ in
+
+let -1 = \z x- x0 x+.x- in
+
+let up- = \n z x- x0 x+.x- (n z x- x0 x+) in
+
+let up0 = \n z x- x0 x+.x0 (n z x- x0 x+) in
+
+let up+ = \n z x- x0 x+.x+ (n z x- x0 x+) in
+
+let zero? = \n.n true (\x.false) id (\x.false) in
+
+let succ =
+    let Z = pair 0 1 in
+    let A- = \p.p (\n m.pair (up- n) (up0 n)) in
+    let A0 = \p.p (\n m.pair (up0 n) (up+ n)) in
+    let A+ = \p.p (\n m.pair (up+ n) (up- m)) in
+    \n.snd (n Z A- A0 A+) in
+
+let pred =
+    let Z = pair 0 -1 in
+    let A- = \p.p (\n m.pair (up- n) (up+ m)) in
+    let A0 = \p.p (\n m.pair (up0 n) (up- n)) in
+    let A+ = \p.p (\n m.pair (up+ n) (up0 n)) in
+    \n.snd (n Z A- A0 A+) in
+
+let neg = \n z x- x0 x+.n z x+ x0 x- in
+
+# TODO binary functions
