@@ -1,15 +1,7 @@
-use anyhow::Result;
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_until, take_while1},
-    character::complete::{char, multispace1},
-    combinator::{eof, map, value, verify},
-    multi::{many0, many1, many_m_n},
-    sequence::{delimited, pair, preceded, terminated, tuple},
-    IResult,
-};
+use std::iter::Peekable;
 
-static RESERVED: [&str; 3] = ["let", "=", "in"];
+use anyhow::{bail, ensure, Context, Result};
+use regex::{Match, Matches, Regex};
 
 /// Represents a term as written: multiple argument abstractions, two or more terms applied in
 /// sequence, let bindings.
@@ -22,71 +14,91 @@ pub enum Term<'a> {
 
 impl<'a> Term<'a> {
     pub fn new(input: &'a str) -> Result<Self> {
-        Ok(terminated(term, eof)(input)
-            .map_err(nom::Err::<nom::error::Error<&str>>::to_owned)?
-            .1)
+        parse_term(
+            &mut Regex::new(r"#.*|\\|\.|\(|\)|[^\\\.\(\)\s]+")
+                .unwrap()
+                .find_iter(input)
+                .peekable(),
+        )
     }
 }
 
-fn comment(input: &str) -> IResult<&str, ()> {
-    value((), pair(char('#'), take_until("\n")))(input)
+fn is_eof(tokens: &mut Peekable<Matches>) -> bool {
+    tokens.peek().is_none()
 }
 
-fn whitespace(input: &str) -> IResult<&str, ()> {
-    value((), many0(alt((value((), multispace1), comment))))(input)
+fn peek<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
+    tokens.peek().context("EOF").map(Match::as_str)
 }
 
-fn ws<'a, F, O>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O>
-where
-    F: FnMut(&'a str) -> IResult<&'a str, O>,
-{
-    delimited(whitespace, inner, whitespace)
+fn next<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
+    tokens.next().context("EOF").map(|m| m.as_str())
 }
 
-fn identifier(input: &str) -> IResult<&str, &str> {
-    ws(verify(
-        take_while1(|c: char| !c.is_whitespace() && !r"\.()".contains(c)),
-        |s| !RESERVED.contains(&s),
-    ))(input)
+fn consume(expected: &str, tokens: &mut Peekable<Matches>) -> Result<()> {
+    ensure!(tokens.next().context("EOF")?.as_str() == expected);
+    Ok(())
 }
 
-fn variable(input: &str) -> IResult<&str, Term> {
-    map(identifier, Term::Var)(input)
+fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
+    let token = next(tokens)?;
+    match token {
+        r"\" | "." | "(" | ")" | "let" | "=" | "in" => bail!("unexpected '{token}'"),
+        _ => Ok(token),
+    }
 }
 
-fn abstraction(input: &str) -> IResult<&str, Term> {
-    ws(map(
-        pair(delimited(char('\\'), many1(identifier), char('.')), term),
-        |(args, body)| Term::Abs(args, Box::new(body)),
-    ))(input)
+fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    while peek(tokens)?.starts_with('#') {
+        next(tokens)?;
+    }
+
+    let mut terms = Vec::new();
+    while !is_eof(tokens) {
+        let token = peek(tokens)?;
+        terms.push(match token {
+            ")" | "in" => {
+                break;
+            }
+            "." | "=" => bail!("unexpected '{token}'"),
+            "(" => parse_bracketed(tokens),
+            r"\" => parse_abs(tokens),
+            "let" => parse_let(tokens),
+            _ => parse_identifier(tokens).map(Term::Var),
+        }?);
+    }
+
+    match terms.len() {
+        0 => bail!("empty term"),
+        1 => Ok(terms.swap_remove(0)),
+        _ => Ok(Term::App(terms)),
+    }
 }
 
-fn application(input: &str) -> IResult<&str, Term> {
-    map(
-        many_m_n(
-            2,
-            usize::MAX,
-            alt((bracketed, abstraction, variable, binding)),
-        ),
-        Term::App,
-    )(input)
+fn parse_bracketed<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    consume("(", tokens)?;
+    let res = parse_term(tokens);
+    consume(")", tokens)?;
+    res
 }
 
-fn binding(input: &str) -> IResult<&str, Term> {
-    ws(map(
-        tuple((
-            preceded(tag("let"), identifier),
-            preceded(char('='), term),
-            preceded(tag("in"), term),
-        )),
-        |(v, t, s)| Term::Let(v, Box::new(t), Box::new(s)),
-    ))(input)
+fn parse_abs<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    consume(r"\", tokens)?;
+    let mut args = Vec::new();
+    while peek(tokens)? != "." {
+        args.push(parse_identifier(tokens)?);
+    }
+    consume(".", tokens)?;
+    let body = parse_term(tokens)?;
+    Ok(Term::Abs(args, Box::new(body)))
 }
 
-fn bracketed(input: &str) -> IResult<&str, Term> {
-    ws(delimited(char('('), term, char(')')))(input)
-}
-
-fn term(input: &str) -> IResult<&str, Term> {
-    alt((application, bracketed, abstraction, variable, binding))(input)
+fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    consume("let", tokens)?;
+    let arg = parse_identifier(tokens)?;
+    consume("=", tokens)?;
+    let s = parse_term(tokens)?;
+    consume("in", tokens)?;
+    let t = parse_term(tokens)?;
+    Ok(Term::Let(arg, Box::new(s), Box::new(t)))
 }
