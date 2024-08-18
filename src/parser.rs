@@ -1,7 +1,7 @@
 use anyhow::Result;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1},
+    bytes::complete::{tag, take_until, take_while1},
     character::complete::{char, multispace1},
     combinator::{eof, map, value, verify},
     multi::{many0, many1, many_m_n},
@@ -29,7 +29,7 @@ impl<'a> Term<'a> {
 }
 
 fn comment(input: &str) -> IResult<&str, ()> {
-    value((), pair(char('#'), is_not("\n\r")))(input)
+    value((), pair(char('#'), take_until("\n")))(input)
 }
 
 fn whitespace(input: &str) -> IResult<&str, ()> {
