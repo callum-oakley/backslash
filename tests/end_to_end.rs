@@ -33,5 +33,15 @@ fn end_to_end() {
         "01tf",
         "f",
     );
-    // assert_run(r"\input.+ (head input) (head (tail input))", "01", "a");
+    assert_run(
+        r"
+          \input.
+            let x = head input in
+            let y = head (tail input) in
+            let res = add x y in
+            cons res nil
+        ",
+        "01",
+        "a",
+    );
 }

@@ -109,3 +109,20 @@ let eq? =
   let A+ = \e n.n false (\m.false) (\m.false) (\m.e m) in
   let go = \n.n Z A- A0 A+ in
   \x y.go x (lift y) in
+
+let add =
+  let trit- = \x- x0 x+.x- in
+  let trit0 = \x- x0 x+.x0 in
+  let trit+ = \x- x0 x+.x+ in
+  let B-- = \a c m.c (up0 (a m trit-)) (up+ (a m trit-)) (up- (a m trit0)) in
+  let B0- = \a c m.c (up+ (a m trit-)) (up- (a m trit0)) (up0 (a m trit0)) in
+  let B00 = \a c m.c (up- (a m trit0)) (up0 (a m trit0)) (up+ (a m trit0)) in
+  let B0+ = \a c m.c (up0 (a m trit0)) (up+ (a m trit0)) (up- (a m trit+)) in
+  let B++ = \a c m.c (up+ (a m trit0)) (up- (a m trit+)) (up0 (a m trit+)) in
+  let C = \a n.a n trit0 in
+  let Z = \n c.c (dec (drop n)) (drop n) (inc (drop n)) in
+  let A- = \a n c.n (B0- a c n) (B-- a c) (B0- a c) (B00 a c) in
+  let A0 = \a n c.n (B00 a c n) (B0- a c) (B00 a c) (B0+ a c) in
+  let A+ = \a n c.n (B0+ a c n) (B00 a c) (B0+ a c) (B++ a c) in
+  let go = \n.C (n Z A- A0 A+) in
+  \x y.go x (lift y) in
