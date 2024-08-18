@@ -44,4 +44,15 @@ fn end_to_end() {
         "01",
         "a",
     );
+    assert_run(
+        r"
+          \input.
+            let x = head input in
+            let y = head (tail input) in
+            let res = sub x y in
+            cons res nil
+        ",
+        "a0",
+        "1",
+    );
 }

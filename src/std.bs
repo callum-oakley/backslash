@@ -126,3 +126,5 @@ let add =
   let A+ = \a n c.n (B0+ a c n) (B00 a c) (B0+ a c) (B++ a c) in
   let go = \n.C (n Z A- A0 A+) in
   \x y.go x (lift y) in
+
+let sub = \x y.add x (neg y) in
