@@ -55,4 +55,14 @@ fn end_to_end() {
         "a0",
         "1",
     );
+    assert_run(
+        r"
+          \input.
+            let x = head input in
+            let res = mul x x in
+            cons res nil
+        ",
+        "\n",
+        "d",
+    );
 }
