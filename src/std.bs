@@ -35,20 +35,20 @@ let nil = \ifnil ifcons.ifnil in
 let cons = \head tail ifnil ifcons.ifcons head tail in
 
 let head = \list.list
-    nil
-    \head tail.head in
+  nil
+  \head tail.head in
 
 let tail = \list.list
-    nil
-    \head tail.tail in
+  nil
+  \head tail.tail in
 
 let foldr = \f init list.list
-    init
-    \head tail.f head (foldr f init tail) in
+  init
+  \head tail.f head (foldr f init tail) in
 
 let foldl = \f init list.list
-    init
-    \head tail.foldl f (f init head) tail in
+  init
+  \head tail.foldl f (f init head) tail in
 
 let map = \f.foldr (comp cons f) nil in
 
@@ -75,19 +75,37 @@ let up+ = \n z x- x0 x+.x+ (n z x- x0 x+) in
 let zero? = \n.n true (\x.false) id (\x.false) in
 
 let inc =
-    let Z = pair 0 1 in
-    let A- = \p.p (\n m.pair (up- n) (up0 n)) in
-    let A0 = \p.p (\n m.pair (up0 n) (up+ n)) in
-    let A+ = \p.p (\n m.pair (up+ n) (up- m)) in
-    \n.snd (n Z A- A0 A+) in
+  let Z = pair 0 1 in
+  let A- = \p.p (\n m.pair (up- n) (up0 n)) in
+  let A0 = \p.p (\n m.pair (up0 n) (up+ n)) in
+  let A+ = \p.p (\n m.pair (up+ n) (up- m)) in
+  \n.snd (n Z A- A0 A+) in
 
 let dec =
-    let Z = pair 0 -1 in
-    let A- = \p.p (\n m.pair (up- n) (up+ m)) in
-    let A0 = \p.p (\n m.pair (up0 n) (up- n)) in
-    let A+ = \p.p (\n m.pair (up+ n) (up0 n)) in
-    \n.snd (n Z A- A0 A+) in
+  let Z = pair 0 -1 in
+  let A- = \p.p (\n m.pair (up- n) (up+ m)) in
+  let A0 = \p.p (\n m.pair (up0 n) (up- n)) in
+  let A+ = \p.p (\n m.pair (up+ n) (up0 n)) in
+  \n.snd (n Z A- A0 A+) in
 
 let neg = \n z x- x0 x+.n z x+ x0 x- in
 
-# TODO binary functions
+let lift =
+  let A- = \n z x- x0 x+.x- n in
+  let A0 = \n z x- x0 x+.x0 n in
+  let A+ = \n z x- x0 x+.x+ n in
+  \n.n 0 A- A0 A+ in
+
+let drop =
+  let A- = \m.up- (drop m) in
+  let A0 = \m.up0 (drop m) in
+  let A+ = \m.up+ (drop m) in
+  \n.n 0 A- A0 A+ in
+
+let eq? =
+  let Z = \n.zero? (drop n) in
+  let A- = \e n.n false (\m.e m) (\m.false) (\m.false) in
+  let A0 = \e n.n (e n) (\m.false) (\m.e m) (\m.false) in
+  let A+ = \e n.n false (\m.false) (\m.false) (\m.e m) in
+  let go = \n.n Z A- A0 A+ in
+  \x y.go x (lift y) in
