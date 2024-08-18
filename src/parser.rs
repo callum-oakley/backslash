@@ -14,12 +14,13 @@ pub enum Term<'a> {
 
 impl<'a> Term<'a> {
     pub fn new(input: &'a str) -> Result<Self> {
-        parse_term(
-            &mut Regex::new(r"#.*|\\|\.|\(|\)|[^\\\.\(\)\s]+")
-                .unwrap()
-                .find_iter(input)
-                .peekable(),
-        )
+        let re = Regex::new(r"#.*|\\|\.|\(|\)|[^\\\.\(\)\s]+").unwrap();
+        let mut tokens = re.find_iter(input).peekable();
+        let term = parse_term(&mut tokens)?;
+        if !is_eof(&mut tokens) {
+            bail!("unexpected '{}'", peek(&mut tokens)?);
+        }
+        Ok(term)
     }
 }
 
