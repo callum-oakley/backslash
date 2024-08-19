@@ -10,6 +10,7 @@ pub enum Term<'a> {
     Abs(Vec<&'a str>, Box<Term<'a>>),
     App(Vec<Term<'a>>),
     Let(&'a str, Box<Term<'a>>, Box<Term<'a>>),
+    Int(i64),
 }
 
 impl<'a> Term<'a> {
@@ -65,7 +66,7 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
             "(" => parse_bracketed(tokens),
             r"\" => parse_abs(tokens),
             "let" => parse_let(tokens),
-            _ => parse_identifier(tokens).map(Term::Var),
+            _ => parse_identifier(tokens).map(|id| id.parse().map_or(Term::Var(id), Term::Int)),
         }?);
     }
 

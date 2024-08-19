@@ -65,4 +65,5 @@ fn end_to_end() {
         "\n",
         "d",
     );
+    assert_run(r"map (add -32)", "backslash", "BACKSLASH");
 }

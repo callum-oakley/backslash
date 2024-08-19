@@ -3,7 +3,7 @@
 #![allow(clippy::missing_panics_doc)]
 
 use anyhow::Result;
-use term::Bruijn;
+use term::Term;
 
 mod bytes;
 mod int;
@@ -14,11 +14,5 @@ mod term;
 static STD: &str = include_str!("std.bs");
 
 pub fn run(term: &str, input: &[u8]) -> Result<Vec<u8>> {
-    bytes::decode(
-        Bruijn::app(
-            Bruijn::new(&format!("{STD}\n{term}"))?,
-            bytes::encode(input),
-        )
-        .reduce(),
-    )
+    bytes::decode(Term::app(Term::new(&format!("{STD}\n{term}"))?, bytes::encode(input)).reduce())
 }

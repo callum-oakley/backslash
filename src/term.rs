@@ -2,75 +2,29 @@ use std::mem;
 
 use anyhow::{bail, Result};
 
-use crate::parser;
-
-/// A standard lambda calculus term with named variables and no sugar.
-#[derive(PartialEq, Debug)]
-enum Standard<'a> {
-    Var(&'a str),
-    Abs(&'a str, Box<Standard<'a>>),
-    App(Box<Standard<'a>>, Box<Standard<'a>>),
-}
-
-impl<'a> Standard<'a> {
-    fn new(input: &'a str) -> Result<Self> {
-        parser::Term::new(input).map(|term| (&term).into())
-    }
-
-    #[must_use]
-    pub fn abs(arg: &'a str, body: Self) -> Self {
-        Standard::Abs(arg, Box::new(body))
-    }
-
-    #[must_use]
-    pub fn app(s: Self, t: Self) -> Self {
-        Standard::App(Box::new(s), Box::new(t))
-    }
-}
-
-impl<'a> From<&parser::Term<'a>> for Standard<'a> {
-    fn from(term: &parser::Term<'a>) -> Self {
-        match term {
-            parser::Term::Var(x) => Standard::Var(x),
-            parser::Term::Abs(args, body) => args
-                .iter()
-                .rev()
-                .fold(body.as_ref().into(), |body, arg| Standard::abs(arg, body)),
-            parser::Term::App(terms) => terms[1..]
-                .iter()
-                .fold((&terms[0]).into(), |s, t| Standard::app(s, t.into())),
-            parser::Term::Let(x, s, t) => Standard::app(
-                Standard::abs(x, t.as_ref().into()),
-                Standard::app(
-                    Standard::new(r"\f.(\x.f(x x))(\x.f(x x))").unwrap(),
-                    Standard::abs(x, s.as_ref().into()),
-                ),
-            ),
-        }
-    }
-}
+use crate::{int, parser};
 
 /// A lambda calculus term with de Bruijn indices (starting at 0).
 #[derive(Clone, PartialEq, Debug)]
-pub enum Bruijn {
+pub enum Term {
     Var(usize),
-    Abs(Box<Bruijn>),
-    App(Box<Bruijn>, Box<Bruijn>),
+    Abs(Box<Term>),
+    App(Box<Term>, Box<Term>),
 }
 
-impl Bruijn {
+impl Term {
     pub fn new(s: &str) -> Result<Self> {
-        Standard::new(s).and_then(|term| (&term).try_into())
+        Intermediate::new(s).and_then(|term| (&term).try_into())
     }
 
     #[must_use]
     pub fn abs(body: Self) -> Self {
-        Bruijn::Abs(Box::new(body))
+        Term::Abs(Box::new(body))
     }
 
     #[must_use]
     pub fn app(s: Self, t: Self) -> Self {
-        Bruijn::App(Box::new(s), Box::new(t))
+        Term::App(Box::new(s), Box::new(t))
     }
 
     pub fn try_unabs(self) -> Result<Self> {
@@ -92,14 +46,14 @@ impl Bruijn {
     #[must_use]
     pub fn reduce(mut self) -> Self {
         fn substitute<'a>(
-            term: &'a mut Bruijn,
+            term: &'a mut Term,
             // Exactly one of param or param_ref will be Some.
-            param: &mut Option<Bruijn>,
-            param_ref: &mut Option<&'a Bruijn>,
+            param: &mut Option<Term>,
+            param_ref: &mut Option<&'a Term>,
             depth: usize,
         ) {
             match term {
-                Bruijn::Var(x) => {
+                Term::Var(x) => {
                     if *x == depth {
                         // If this is the first substitution, we can take out of param to avoid
                         // cloning, otherwise we'll have to clone from param_ref.
@@ -111,31 +65,31 @@ impl Bruijn {
                         }
                     }
                 }
-                Bruijn::Abs(body) => {
+                Term::Abs(body) => {
                     substitute(body.as_mut(), param, param_ref, depth + 1);
                 }
-                Bruijn::App(s, t) => {
+                Term::App(s, t) => {
                     substitute(s, param, param_ref, depth);
                     substitute(t.as_mut(), param, param_ref, depth);
                 }
             }
         }
 
-        fn reduce_once(term: &mut Bruijn) -> bool {
+        fn reduce_once(term: &mut Term) -> bool {
             match term {
-                Bruijn::Var(_) => false,
-                Bruijn::Abs(body) => reduce_once(body.as_mut()),
-                Bruijn::App(s, t) => {
-                    if let Bruijn::Abs(body) = s.as_mut() {
+                Term::Var(_) => false,
+                Term::Abs(body) => reduce_once(body.as_mut()),
+                Term::App(s, t) => {
+                    if let Term::Abs(body) = s.as_mut() {
                         // We "take" parts of the term below by replacing them with Bruijn::Var(0)
                         // which will be dropped immediately.
                         substitute(
                             body.as_mut(),
-                            &mut Some(mem::replace(t, Bruijn::Var(0))),
+                            &mut Some(mem::replace(t, Term::Var(0))),
                             &mut None,
                             0,
                         );
-                        *term = mem::replace(body, Bruijn::Var(0));
+                        *term = mem::replace(body, Term::Var(0));
                         true
                     } else {
                         reduce_once(s) || reduce_once(t)
@@ -150,33 +104,86 @@ impl Bruijn {
     }
 }
 
-impl<'a> TryFrom<&Standard<'a>> for Bruijn {
+impl<'a> TryFrom<&Intermediate<'a>> for Term {
     type Error = anyhow::Error;
 
-    fn try_from(term: &Standard<'a>) -> Result<Self> {
-        fn try_from_with_scope<'a>(scope: &mut Vec<&'a str>, term: &'a Standard) -> Result<Bruijn> {
+    fn try_from(term: &Intermediate<'a>) -> Result<Self> {
+        fn try_from_with_scope<'a>(
+            scope: &mut Vec<&'a str>,
+            term: &'a Intermediate,
+        ) -> Result<Term> {
             match term {
-                Standard::Var(x) => {
+                Intermediate::Var(x) => {
                     if let Some((i, _)) = scope.iter().rev().enumerate().find(|&(_, v)| x == v) {
-                        Ok(Bruijn::Var(i))
+                        Ok(Term::Var(i))
                     } else {
                         bail!("unbound variable {x}");
                     }
                 }
-                Standard::Abs(arg, body) => {
+                Intermediate::Abs(arg, body) => {
                     scope.push(arg);
-                    let res = Bruijn::abs(try_from_with_scope(scope, body)?);
+                    let res = Term::abs(try_from_with_scope(scope, body)?);
                     scope.pop();
                     Ok(res)
                 }
-                Standard::App(s, t) => Ok(Bruijn::app(
+                Intermediate::App(s, t) => Ok(Term::app(
                     try_from_with_scope(scope, s)?,
                     try_from_with_scope(scope, t)?,
                 )),
+                Intermediate::Int(n) => Ok(int::encode(*n)),
             }
         }
 
         try_from_with_scope(&mut Vec::new(), term)
+    }
+}
+
+// TODO can we have parser::Term look more like this, and skip this intermediate representation?
+#[derive(PartialEq, Debug)]
+enum Intermediate<'a> {
+    Var(&'a str),
+    Abs(&'a str, Box<Intermediate<'a>>),
+    App(Box<Intermediate<'a>>, Box<Intermediate<'a>>),
+    Int(i64),
+}
+
+impl<'a> Intermediate<'a> {
+    fn new(input: &'a str) -> Result<Self> {
+        parser::Term::new(input).map(|term| (&term).into())
+    }
+
+    #[must_use]
+    pub fn abs(arg: &'a str, body: Self) -> Self {
+        Intermediate::Abs(arg, Box::new(body))
+    }
+
+    #[must_use]
+    pub fn app(s: Self, t: Self) -> Self {
+        Intermediate::App(Box::new(s), Box::new(t))
+    }
+}
+
+impl<'a> From<&parser::Term<'a>> for Intermediate<'a> {
+    fn from(term: &parser::Term<'a>) -> Self {
+        match term {
+            parser::Term::Var(x) => Intermediate::Var(x),
+            parser::Term::Abs(args, body) => {
+                args.iter().rev().fold(body.as_ref().into(), |body, arg| {
+                    Intermediate::abs(arg, body)
+                })
+            }
+            parser::Term::App(terms) => terms[1..]
+                .iter()
+                .fold((&terms[0]).into(), |s, t| Intermediate::app(s, t.into())),
+            parser::Term::Let(x, s, t) => Intermediate::app(
+                Intermediate::abs(x, t.as_ref().into()),
+                Intermediate::app(
+                    Intermediate::new(r"\f.(\x.f(x x))(\x.f(x x))").unwrap(),
+                    Intermediate::abs(x, s.as_ref().into()),
+                ),
+            ),
+            parser::Term::Int(n) => Intermediate::Int(*n),
+        }
     }
 }
 
@@ -186,93 +193,99 @@ mod tests {
 
     #[test]
     fn test_standard() {
-        assert_eq!(Standard::new("x").unwrap(), Standard::Var("x"));
+        assert_eq!(Intermediate::new("x").unwrap(), Intermediate::Var("x"));
         assert_eq!(
-            Standard::new(r"\x.x").unwrap(),
-            Standard::abs("x", Standard::Var("x"))
+            Intermediate::new(r"\x.x").unwrap(),
+            Intermediate::abs("x", Intermediate::Var("x"))
         );
         assert_eq!(
-            Standard::new("x y").unwrap(),
-            Standard::app(Standard::Var("x"), Standard::Var("y"))
+            Intermediate::new("x y").unwrap(),
+            Intermediate::app(Intermediate::Var("x"), Intermediate::Var("y"))
         );
         assert_eq!(
-            Standard::new(r"\x.\y.x y").unwrap(),
-            Standard::abs(
+            Intermediate::new(r"\x.\y.x y").unwrap(),
+            Intermediate::abs(
                 "x",
-                Standard::abs("y", Standard::app(Standard::Var("x"), Standard::Var("y")))
+                Intermediate::abs(
+                    "y",
+                    Intermediate::app(Intermediate::Var("x"), Intermediate::Var("y"))
+                )
             ),
         );
         assert_eq!(
-            Standard::new("x y z").unwrap(),
-            Standard::app(
-                Standard::app(Standard::Var("x"), Standard::Var("y")),
-                Standard::Var("z")
+            Intermediate::new("x y z").unwrap(),
+            Intermediate::app(
+                Intermediate::app(Intermediate::Var("x"), Intermediate::Var("y")),
+                Intermediate::Var("z")
             ),
         );
         assert_eq!(
-            Standard::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
-            Standard::abs(
+            Intermediate::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
+            Intermediate::abs(
                 "g",
-                Standard::app(
-                    Standard::abs(
+                Intermediate::app(
+                    Intermediate::abs(
                         "x",
-                        Standard::app(
-                            Standard::Var("g"),
-                            Standard::app(Standard::Var("x"), Standard::Var("x"))
+                        Intermediate::app(
+                            Intermediate::Var("g"),
+                            Intermediate::app(Intermediate::Var("x"), Intermediate::Var("x"))
                         )
                     ),
-                    Standard::abs(
+                    Intermediate::abs(
                         "x",
-                        Standard::app(
-                            Standard::Var("g"),
-                            Standard::app(Standard::Var("x"), Standard::Var("x"))
+                        Intermediate::app(
+                            Intermediate::Var("g"),
+                            Intermediate::app(Intermediate::Var("x"), Intermediate::Var("x"))
                         )
                     ),
                 ),
             ),
         );
         assert_eq!(
-            Standard::new(r"\x y z.x y z").unwrap(),
-            Standard::abs(
+            Intermediate::new(r"\x y z.x y z").unwrap(),
+            Intermediate::abs(
                 "x",
-                Standard::abs(
+                Intermediate::abs(
                     "y",
-                    Standard::abs(
+                    Intermediate::abs(
                         "z",
-                        Standard::app(
-                            Standard::app(Standard::Var("x"), Standard::Var("y")),
-                            Standard::Var("z")
+                        Intermediate::app(
+                            Intermediate::app(Intermediate::Var("x"), Intermediate::Var("y")),
+                            Intermediate::Var("z")
                         )
                     )
                 ),
             )
         );
         assert_eq!(
-            Standard::new(r"\_.x y").unwrap(),
-            Standard::abs("_", Standard::app(Standard::Var("x"), Standard::Var("y")))
+            Intermediate::new(r"\_.x y").unwrap(),
+            Intermediate::abs(
+                "_",
+                Intermediate::app(Intermediate::Var("x"), Intermediate::Var("y"))
+            )
         );
         assert_eq!(
-            Standard::new("# The identity:\n\\x.x").unwrap(),
-            Standard::abs("x", Standard::Var("x")),
+            Intermediate::new("# The identity:\n\\x.x").unwrap(),
+            Intermediate::abs("x", Intermediate::Var("x")),
         );
     }
 
     #[test]
     fn test_bruijn() {
         assert_eq!(
-            Bruijn::new(r"\x y.x").unwrap(),
-            Bruijn::abs(Bruijn::abs(Bruijn::Var(1))),
+            Term::new(r"\x y.x").unwrap(),
+            Term::abs(Term::abs(Term::Var(1))),
         );
         assert_eq!(
-            Bruijn::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
-            Bruijn::abs(Bruijn::app(
-                Bruijn::abs(Bruijn::app(
-                    Bruijn::Var(1),
-                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0)),
+            Term::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap(),
+            Term::abs(Term::app(
+                Term::abs(Term::app(
+                    Term::Var(1),
+                    Term::app(Term::Var(0), Term::Var(0)),
                 )),
-                Bruijn::abs(Bruijn::app(
-                    Bruijn::Var(1),
-                    Bruijn::app(Bruijn::Var(0), Bruijn::Var(0)),
+                Term::abs(Term::app(
+                    Term::Var(1),
+                    Term::app(Term::Var(0), Term::Var(0)),
                 ))
             ))
         );
@@ -280,7 +293,7 @@ mod tests {
 
     #[test]
     fn test_reduce() {
-        let term = Bruijn::new(r"(\x.x)(\x.x)").unwrap().reduce();
-        assert_eq!(term, Bruijn::new(r"\x.x").unwrap());
+        let term = Term::new(r"(\x.x)(\x.x)").unwrap().reduce();
+        assert_eq!(term, Term::new(r"\x.x").unwrap());
     }
 }

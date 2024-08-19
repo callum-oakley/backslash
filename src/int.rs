@@ -1,32 +1,32 @@
 use anyhow::{bail, Result};
 
-use crate::term::Bruijn;
+use crate::term::Term;
 
-pub fn encode(n: i64) -> Bruijn {
-    let mut body = Bruijn::Var(3);
+pub fn encode(n: i64) -> Term {
+    let mut body = Term::Var(3);
     for trit in to_balanced_ternary(n).into_iter().rev() {
-        body = Bruijn::app(
+        body = Term::app(
             match trit {
-                -1 => Bruijn::Var(2),
-                0 => Bruijn::Var(1),
-                1 => Bruijn::Var(0),
+                -1 => Term::Var(2),
+                0 => Term::Var(1),
+                1 => Term::Var(0),
                 _ => panic!("invalid trit: {trit}"),
             },
             body,
         );
     }
-    Bruijn::abs(Bruijn::abs(Bruijn::abs(Bruijn::abs(body))))
+    Term::abs(Term::abs(Term::abs(Term::abs(body))))
 }
 
-pub fn decode(mut term: Bruijn) -> Result<i64> {
+pub fn decode(mut term: Term) -> Result<i64> {
     let mut trits = Vec::new();
     term = term.try_unabs()?.try_unabs()?.try_unabs()?.try_unabs()?;
-    while term != Bruijn::Var(3) {
+    while term != Term::Var(3) {
         let (s, t) = term.try_unapp()?;
         trits.push(match s {
-            Bruijn::Var(2) => -1,
-            Bruijn::Var(1) => 0,
-            Bruijn::Var(0) => 1,
+            Term::Var(2) => -1,
+            Term::Var(1) => 0,
+            Term::Var(0) => 1,
             _ => bail!("invalid trit"),
         });
         term = t;
