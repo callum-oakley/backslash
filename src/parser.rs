@@ -3,13 +3,10 @@ use std::iter::Peekable;
 use anyhow::{bail, ensure, Context, Result};
 use regex::{Match, Matches, Regex};
 
-/// Represents a term as written: multiple argument abstractions, two or more terms applied in
-/// sequence, let bindings.
 pub enum Term<'a> {
     Var(&'a str),
-    Abs(Vec<&'a str>, Box<Term<'a>>),
-    App(Vec<Term<'a>>),
-    Let(&'a str, Box<Term<'a>>, Box<Term<'a>>),
+    Abs(&'a str, Box<Term<'a>>),
+    App(Box<Term<'a>>, Box<Term<'a>>),
     Int(i64),
 }
 
@@ -22,6 +19,16 @@ impl<'a> Term<'a> {
             bail!("unexpected '{}'", peek(&mut tokens)?);
         }
         Ok(term)
+    }
+
+    #[must_use]
+    pub fn abs(arg: &'a str, body: Self) -> Self {
+        Term::Abs(arg, Box::new(body))
+    }
+
+    #[must_use]
+    pub fn app(s: Self, t: Self) -> Self {
+        Term::App(Box::new(s), Box::new(t))
     }
 }
 
@@ -72,8 +79,11 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
 
     match terms.len() {
         0 => bail!("empty term"),
-        1 => Ok(terms.swap_remove(0)),
-        _ => Ok(Term::App(terms)),
+        1 => Ok(terms.remove(0)),
+        _ => {
+            let term = terms.remove(0);
+            Ok(terms.into_iter().fold(term, Term::app))
+        }
     }
 }
 
@@ -91,8 +101,10 @@ fn parse_abs<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
         args.push(parse_identifier(tokens)?);
     }
     consume(".", tokens)?;
-    let body = parse_term(tokens)?;
-    Ok(Term::Abs(args, Box::new(body)))
+    Ok(args
+        .iter()
+        .rev()
+        .fold(parse_term(tokens)?, |body, arg| Term::abs(arg, body)))
 }
 
 fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
@@ -102,5 +114,8 @@ fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
     let s = parse_term(tokens)?;
     consume("in", tokens)?;
     let t = parse_term(tokens)?;
-    Ok(Term::Let(arg, Box::new(s), Box::new(t)))
+    Ok(Term::app(
+        Term::abs(arg, t),
+        Term::app(Term::new(r"\f.(\x.f(x x))(\x.f(x x))")?, Term::abs(arg, s)),
+    ))
 }
