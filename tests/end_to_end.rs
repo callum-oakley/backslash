@@ -14,7 +14,7 @@ fn end_to_end() {
             let y = head (tail input) in
             let t = head (tail (tail input)) in
             let f = head (tail (tail (tail input))) in
-            let res = (eq? x y) t f in
+            let res = (eq x y) t f in
             cons res nil
         ",
         "00tf",
@@ -27,11 +27,11 @@ fn end_to_end() {
             let y = head (tail input) in
             let t = head (tail (tail input)) in
             let f = head (tail (tail (tail input))) in
-            let res = (eq? x y) t f in
+            let res = (lt x y) t f in
             cons res nil
         ",
         "01tf",
-        "f",
+        "t",
     );
     assert_run(
         r"
