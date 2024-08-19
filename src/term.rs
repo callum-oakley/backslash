@@ -1,5 +1,3 @@
-use std::fmt::{self, Display};
-
 use anyhow::{bail, Result};
 
 use crate::parser;
@@ -12,17 +10,6 @@ enum Standard<'a> {
     App(Box<Standard<'a>>, Box<Standard<'a>>),
 }
 
-impl<'a> Display for Standard<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Standard::Var(x) => write!(f, "{x}")?,
-            Standard::Abs(arg, body) => write!(f, r"(\{arg}.{body})")?,
-            Standard::App(s, t) => write!(f, "({s} {t})")?,
-        }
-        Ok(())
-    }
-}
-
 impl<'a> Standard<'a> {
     fn new(input: &'a str) -> Result<Self> {
         parser::Term::new(input).map(|term| (&term).into())
@@ -30,16 +17,12 @@ impl<'a> Standard<'a> {
 
     #[must_use]
     pub fn abs(arg: &'a str, body: Self) -> Self {
-        Self::Abs(arg, Box::new(body))
+        Standard::Abs(arg, Box::new(body))
     }
 
     #[must_use]
     pub fn app(s: Self, t: Self) -> Self {
-        Self::App(Box::new(s), Box::new(t))
-    }
-
-    fn new_fix() -> Self {
-        Standard::new(r"\f.(\x.f(x x))(\x.f(x x))").unwrap()
+        Standard::App(Box::new(s), Box::new(t))
     }
 }
 
@@ -56,36 +39,12 @@ impl<'a> From<&parser::Term<'a>> for Standard<'a> {
                 .fold((&terms[0]).into(), |s, t| Standard::app(s, t.into())),
             parser::Term::Let(x, s, t) => Standard::app(
                 Standard::abs(x, t.as_ref().into()),
-                Standard::app(Standard::new_fix(), Standard::abs(x, s.as_ref().into())),
+                Standard::app(
+                    Standard::new(r"\f.(\x.f(x x))(\x.f(x x))").unwrap(),
+                    Standard::abs(x, s.as_ref().into()),
+                ),
             ),
         }
-    }
-}
-
-impl From<&Bruijn> for Standard<'static> {
-    fn from(term: &Bruijn) -> Self {
-        fn from_with_scope(scope: usize, term: &Bruijn) -> Standard<'static> {
-            static VARS: &str = "abcdefghijklmnopqrstuvwyxz";
-            assert!(scope < 26, "term is too deeply nested");
-
-            match term {
-                Bruijn::Var(x) => {
-                    assert!(*x < scope, "term isn't closed");
-                    let i = scope - x - 1;
-                    Standard::Var(&VARS[i..=i])
-                }
-                Bruijn::Abs(body) => Standard::abs(
-                    &VARS[scope..=scope],
-                    from_with_scope(scope + 1, body.as_ref().as_ref().unwrap()),
-                ),
-                Bruijn::App(s, t) => Standard::app(
-                    from_with_scope(scope, s),
-                    from_with_scope(scope, t.as_ref().as_ref().unwrap()),
-                ),
-            }
-        }
-
-        from_with_scope(0, term)
     }
 }
 
@@ -98,13 +57,6 @@ pub enum Bruijn {
     App(Box<Bruijn>, Box<Option<Bruijn>>),
 }
 
-impl Display for Bruijn {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let term: Standard = self.into();
-        term.fmt(f)
-    }
-}
-
 impl Bruijn {
     pub fn new(s: &str) -> Result<Self> {
         Standard::new(s).and_then(|term| (&term).try_into())
@@ -112,12 +64,12 @@ impl Bruijn {
 
     #[must_use]
     pub fn abs(body: Self) -> Self {
-        Self::Abs(Box::new(Some(body)))
+        Bruijn::Abs(Box::new(Some(body)))
     }
 
     #[must_use]
     pub fn app(s: Self, t: Self) -> Self {
-        Self::App(Box::new(s), Box::new(Some(t)))
+        Bruijn::App(Box::new(s), Box::new(Some(t)))
     }
 
     pub fn try_unabs(self) -> Result<Self> {
@@ -318,10 +270,6 @@ mod tests {
                     Bruijn::app(Bruijn::Var(0), Bruijn::Var(0)),
                 ))
             ))
-        );
-        assert_eq!(
-            format!("{}", Bruijn::new(r"\g.(\x.g (x x)) (\x.g (x x))").unwrap()),
-            r"(\a.((\b.(a (b b))) (\b.(a (b b)))))",
         );
     }
 
