@@ -14,7 +14,7 @@ pub enum Term<'a> {
 
 impl<'a> Term<'a> {
     pub fn new(input: &'a str) -> Result<Self> {
-        let re = Regex::new(r"#.*|\\|\.|\(|\)|[^\\\.\(\)\s]+").unwrap();
+        let re = Regex::new(r"#.*|[\\\.\(\)]|[^#\\\.\(\)\s]+").unwrap();
         let mut tokens = re.find_iter(input).peekable();
         let term = parse_term(&mut tokens)?;
         if !is_eof(&mut tokens) {
