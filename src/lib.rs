@@ -5,6 +5,7 @@
 use anyhow::Result;
 use term::Bruijn;
 
+mod int;
 mod io;
 mod parser;
 mod term;
