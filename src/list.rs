@@ -24,15 +24,11 @@ pub fn decode(mut term: Term) -> Result<Vec<Term>> {
 }
 
 fn new_nil() -> Term {
-    Term::new(r"\ifnil ifcons.ifnil").unwrap()
-}
-
-fn new_cons() -> Term {
-    Term::new(r"\head tail ifnil ifcons.ifcons head tail").unwrap()
+    Term::abs(Term::abs(Term::Var(1)))
 }
 
 fn cons(a: Term, b: Term) -> Term {
-    Term::app(Term::app(new_cons(), a), b).reduce()
+    Term::abs(Term::abs(Term::app(Term::app(Term::Var(0), a), b)))
 }
 
 #[cfg(test)]

@@ -1,8 +1,11 @@
 use std::iter::Peekable;
 
 use anyhow::{bail, ensure, Context, Result};
+use lazy_static::lazy_static;
 use regex::{Match, Matches, Regex};
 
+/// A term with named variables and some sugar yet to be encoded as pure lambda calculus terms.
+#[derive(Clone)]
 pub enum Term<'a> {
     Var(&'a str),
     Abs(&'a str, Box<Term<'a>>),
@@ -12,8 +15,11 @@ pub enum Term<'a> {
 
 impl<'a> Term<'a> {
     pub fn new(input: &'a str) -> Result<Self> {
-        let re = Regex::new(r"#.*|[\\\.\(\)]|[^#\\\.\(\)\s]+").unwrap();
-        let mut tokens = re.find_iter(input).peekable();
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"#.*|[\\\.\(\)]|[^#\\\.\(\)\s]+").unwrap();
+        }
+
+        let mut tokens = RE.find_iter(input).peekable();
         let term = parse_term(&mut tokens)?;
         if !is_eof(&mut tokens) {
             bail!("unexpected '{}'", peek(&mut tokens)?);
@@ -30,6 +36,10 @@ impl<'a> Term<'a> {
     pub fn app(s: Self, t: Self) -> Self {
         Term::App(Box::new(s), Box::new(t))
     }
+}
+
+fn is_int(s: &str) -> bool {
+    matches!(s.as_bytes(), [c, ..] | [b'+' | b'-', c, ..] if c.is_ascii_digit())
 }
 
 fn is_eof(tokens: &mut Peekable<Matches>) -> bool {
@@ -57,6 +67,46 @@ fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a st
     }
 }
 
+fn parse_bracketed<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    consume("(", tokens)?;
+    let res = parse_term(tokens);
+    consume(")", tokens)?;
+    res
+}
+
+fn parse_abs<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    consume(r"\", tokens)?;
+    let mut args = Vec::new();
+    while peek(tokens)? != "." {
+        args.push(parse_identifier(tokens)?);
+    }
+    consume(".", tokens)?;
+    let body = parse_term(tokens)?;
+
+    Ok(args
+        .iter()
+        .rev()
+        .fold(body, |body, arg| Term::abs(arg, body)))
+}
+
+fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    lazy_static! {
+        static ref FIX: Term<'static> = Term::new(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
+    }
+
+    consume("let", tokens)?;
+    let arg = parse_identifier(tokens)?;
+    consume("=", tokens)?;
+    let s = parse_term(tokens)?;
+    consume("in", tokens)?;
+    let t = parse_term(tokens)?;
+
+    Ok(Term::app(
+        Term::abs(arg, t),
+        Term::app(FIX.clone(), Term::abs(arg, s)),
+    ))
+}
+
 fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
     while peek(tokens)?.starts_with('#') {
         next(tokens)?;
@@ -73,7 +123,13 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
             "(" => parse_bracketed(tokens),
             r"\" => parse_abs(tokens),
             "let" => parse_let(tokens),
-            _ => parse_identifier(tokens).map(|id| id.parse().map_or(Term::Var(id), Term::Int)),
+            _ => parse_identifier(tokens).and_then(|id| {
+                if is_int(id) {
+                    Ok(Term::Int(id.parse()?))
+                } else {
+                    Ok(Term::Var(id))
+                }
+            }),
         }?);
     }
 
@@ -85,37 +141,4 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
             Ok(terms.into_iter().fold(term, Term::app))
         }
     }
-}
-
-fn parse_bracketed<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
-    consume("(", tokens)?;
-    let res = parse_term(tokens);
-    consume(")", tokens)?;
-    res
-}
-
-fn parse_abs<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
-    consume(r"\", tokens)?;
-    let mut args = Vec::new();
-    while peek(tokens)? != "." {
-        args.push(parse_identifier(tokens)?);
-    }
-    consume(".", tokens)?;
-    Ok(args
-        .iter()
-        .rev()
-        .fold(parse_term(tokens)?, |body, arg| Term::abs(arg, body)))
-}
-
-fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
-    consume("let", tokens)?;
-    let arg = parse_identifier(tokens)?;
-    consume("=", tokens)?;
-    let s = parse_term(tokens)?;
-    consume("in", tokens)?;
-    let t = parse_term(tokens)?;
-    Ok(Term::app(
-        Term::abs(arg, t),
-        Term::app(Term::new(r"\f.(\x.f(x x))(\x.f(x x))")?, Term::abs(arg, s)),
-    ))
 }

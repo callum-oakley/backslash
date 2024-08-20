@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 
 use crate::{int, parser};
 
-/// A lambda calculus term with de Bruijn indices (starting at 0).
+/// A pure lambda calculus term with de Bruijn indices starting at 0.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Term {
     Var(usize),
