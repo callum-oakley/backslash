@@ -61,10 +61,17 @@ fn consume(expected: &str, tokens: &mut Peekable<Matches>) -> Result<()> {
 
 fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
     let token = next(tokens)?;
-    match token {
-        r"\" | "." | "(" | ")" | "let" | "=" | "in" => bail!("unexpected '{token}'"),
-        _ => Ok(token),
+    if matches!(token, r"\" | "." | "(" | ")" | "let" | "=" | "in") {
+        bail!("unexpected '{token}'");
     }
+    if is_int(token) {
+        bail!("identifier can't be an int");
+    }
+    Ok(token)
+}
+
+fn parse_int<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
+    next(tokens)?.parse().map(Term::Int).map_err(Into::into)
 }
 
 fn parse_bracketed<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
@@ -123,13 +130,8 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Term<'a>> {
             "(" => parse_bracketed(tokens),
             r"\" => parse_abs(tokens),
             "let" => parse_let(tokens),
-            _ => parse_identifier(tokens).and_then(|id| {
-                if is_int(id) {
-                    Ok(Term::Int(id.parse()?))
-                } else {
-                    Ok(Term::Var(id))
-                }
-            }),
+            token if is_int(token) => parse_int(tokens),
+            _ => parse_identifier(tokens).map(Term::Var),
         }?);
     }
 

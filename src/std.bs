@@ -61,14 +61,6 @@ let rev = foldl (flip cons) nil in
 # Informatics. PSI 2001. Lecture Notes in Computer Science, vol 2244. Springer, Berlin, Heidelberg.
 # https://doi.org/10.1007/3-540-45575-2_20
 
-# TODO omit definitions of 0, 1, and -1 once we have syntax sugar for numbers.
-
-let 0 = \z x- x0 x+.z in
-
-let 1 = \z x- x0 x+.x+ in
-
-let -1 = \z x- x0 x+.x- in
-
 let up- = \n z x- x0 x+.x- (n z x- x0 x+) in
 
 let up0 = \n z x- x0 x+.x0 (n z x- x0 x+) in
