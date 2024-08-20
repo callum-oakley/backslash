@@ -14,5 +14,5 @@ mod term;
 static STD: &str = include_str!("std.bs");
 
 pub fn run(term: &str, input: &[u8]) -> Result<Vec<u8>> {
-    bytes::decode(Term::app(Term::new(&format!("{STD}\n{term}"))?, bytes::encode(input)).reduce())
+    bytes::decode(Term::app(format!("{STD}\n{term}").parse()?, bytes::encode(input)).reduce())
 }
