@@ -66,4 +66,14 @@ fn end_to_end() {
         "d",
     );
     assert_run(r"map (add -32)", "backslash", "BACKSLASH");
+    assert_run(
+        r"
+          \input.
+            (and (eq 4 (div 42 10)) (eq 2 (rem 42 10)))
+              (cons 84 nil)
+              (cons 70 nil)
+        ",
+        "",
+        "T",
+    );
 }

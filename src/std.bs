@@ -149,3 +149,22 @@ let gt = \x y.pos? (sub x y) in
 let lte = \x y.not (gt x y) in
 
 let gte = \x y.not (lt x y) in
+
+# The "very slow" algorithm from https://en.wikipedia.org/wiki/Division_algorithm
+# TODO implement something faster
+let divrem = \n d.
+  # TODO division by zero?
+  (neg? d) (divrem n (neg d) \q r.pair (neg q) r)
+  (neg? n) (divrem (neg n) d \q r.
+    (zero? r)
+      (pair (neg q) 0)
+      (pair (dec (neg q)) (sub d r)))
+  let go = \q r.
+    (lt r d)
+      (pair q r)
+      (go (inc q) (sub r d)) in
+  (go 0 n) in
+
+let div = \x y.fst (divrem x y) in
+
+let rem = \x y.snd (divrem x y) in
