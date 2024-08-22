@@ -53,7 +53,8 @@ fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
 
 fn parse(input: &str) -> Result<Sugar> {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"#.*|[\\\.\(\);]|[^#\\\.\(\);\s]+").unwrap();
+        static ref RE: Regex =
+            Regex::new(r"#.*|'(\\.|[^'])'|[\\\.\(\);]|[^#'\\\.\(\);\s]+").unwrap();
     }
 
     let mut tokens = RE.find_iter(input).peekable();
@@ -137,8 +138,10 @@ fn parse_int<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
 fn parse_char<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     let token = next(tokens)?;
     match token.as_bytes() {
-        // TODO escape sequences
-        &[b'\'', c, b'\''] => Ok(Sugar::Int(c.into())),
+        b"'\\n'" => Ok(Sugar::Int(b'\n'.into())),
+        b"'\\r'" => Ok(Sugar::Int(b'\r'.into())),
+        b"'\\t'" => Ok(Sugar::Int(b'\t'.into())),
+        [b'\'', c, b'\''] | [b'\'', b'\\', c, b'\''] => Ok(Sugar::Int((*c).into())),
         _ => bail!("malformed char '{token}'"),
     }
 }

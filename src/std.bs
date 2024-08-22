@@ -172,8 +172,8 @@ let rem = \x y.snd (divrem x y);
 
 let intToString =
   let posIntToString = \n s.(divrem n 10) \q r.
-    let s' = (cons (add r '0') s);
-    (zero? q) s' (posIntToString q s');
+    let s* = (cons (add r '0') s);
+    (zero? q) s* (posIntToString q s');
   \n.
     (neg? n)
       (cons '-' (posIntToString (neg n) nil))
