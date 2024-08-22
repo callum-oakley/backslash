@@ -10,11 +10,11 @@ fn end_to_end() {
     assert_run(
         r"
           \input.
-            let x = head input in
-            let y = head (tail input) in
-            let t = head (tail (tail input)) in
-            let f = head (tail (tail (tail input))) in
-            let res = (eq x y) t f in
+            let x = head input;
+            let y = head (tail input);
+            let t = head (tail (tail input));
+            let f = head (tail (tail (tail input)));
+            let res = (eq x y) t f;
             cons res nil
         ",
         "00tf",
@@ -23,11 +23,11 @@ fn end_to_end() {
     assert_run(
         r"
           \input.
-            let x = head input in
-            let y = head (tail input) in
-            let t = head (tail (tail input)) in
-            let f = head (tail (tail (tail input))) in
-            let res = (lt x y) t f in
+            let x = head input;
+            let y = head (tail input);
+            let t = head (tail (tail input));
+            let f = head (tail (tail (tail input)));
+            let res = (lt x y) t f;
             cons res nil
         ",
         "01tf",
@@ -36,9 +36,9 @@ fn end_to_end() {
     assert_run(
         r"
           \input.
-            let x = head input in
-            let y = head (tail input) in
-            let res = add x y in
+            let x = head input;
+            let y = head (tail input);
+            let res = add x y;
             cons res nil
         ",
         "01",
@@ -47,9 +47,9 @@ fn end_to_end() {
     assert_run(
         r"
           \input.
-            let x = head input in
-            let y = head (tail input) in
-            let res = sub x y in
+            let x = head input;
+            let y = head (tail input);
+            let res = sub x y;
             cons res nil
         ",
         "a0",
@@ -58,8 +58,8 @@ fn end_to_end() {
     assert_run(
         r"
           \input.
-            let x = head input in
-            let res = mul x x in
+            let x = head input;
+            let res = mul x x;
             cons res nil
         ",
         "\n",
@@ -68,12 +68,22 @@ fn end_to_end() {
     assert_run(r"map (add -32)", "backslash", "BACKSLASH");
     assert_run(
         r"
-          \input.
+          \_.
             (and (eq 4 (div 42 10)) (eq 2 (rem 42 10)))
               (cons 84 nil)
               (cons 70 nil)
         ",
         "",
         "T",
+    );
+    assert_run(r"\_.intToString 42", "", "42");
+    assert_run(r"\_.intToString 0", "", "0");
+    assert_run(r"\_.intToString -42", "", "-42");
+    assert_run(r"\input.intToString (inc (stringToInt input))", "42", "43");
+    assert_run(r"\input.intToString (inc (stringToInt input))", "0", "1");
+    assert_run(
+        r"\input.intToString (inc (stringToInt input))",
+        "-42",
+        "-41",
     );
 }

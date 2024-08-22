@@ -53,7 +53,7 @@ fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
 
 fn parse(input: &str) -> Result<Sugar> {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"#.*|[\\\.\(\)]|[^#\\\.\(\)\s]+").unwrap();
+        static ref RE: Regex = Regex::new(r"#.*|[\\\.\(\);]|[^#\\\.\(\);\s]+").unwrap();
     }
 
     let mut tokens = RE.find_iter(input).peekable();
@@ -73,7 +73,7 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     while !is_eof(tokens) {
         let token = peek(tokens)?;
         terms.push(match token {
-            ")" | "in" => {
+            ")" | ";" => {
                 break;
             }
             "." | "=" => bail!("unexpected '{token}'"),
@@ -123,7 +123,7 @@ fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     let arg = parse_identifier(tokens)?;
     consume("=", tokens)?;
     let s = parse_term(tokens)?;
-    consume("in", tokens)?;
+    consume(";", tokens)?;
     let t = parse_term(tokens)?;
 
     Ok(app(abs(arg, t), app(FIX.clone(), abs(arg, s))))
@@ -135,7 +135,7 @@ fn parse_int<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
 
 fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
     let token = next(tokens)?;
-    if matches!(token, r"\" | "." | "(" | ")" | "let" | "=" | "in") {
+    if matches!(token, r"\" | "." | "(" | ")" | "let" | "=" | ";") {
         bail!("unexpected '{token}'");
     }
     if is_int(token) {
