@@ -1,4 +1,4 @@
-# Bool
+# Bool #############################################################################################
 
 let true = \iftrue iffalse.iftrue;
 
@@ -10,7 +10,7 @@ let and = \a b.a b false;
 
 let or = \a b.a true b;
 
-# Function
+# Function #########################################################################################
 
 let id = \x.x;
 
@@ -20,7 +20,7 @@ let flip = \f x y.f y x;
 
 let fix = \f.(\x.f (x x)) (\x.f (x x));
 
-# Pair
+# Pair #############################################################################################
 
 let pair = \a b ifpair.ifpair a b;
 
@@ -28,7 +28,7 @@ let fst = \pair.pair \a b.a;
 
 let snd = \pair.pair \a b.b;
 
-# List
+# List #############################################################################################
 
 let nil = \ifnil ifcons.ifnil;
 
@@ -54,7 +54,7 @@ let map = \f.foldr (comp cons f) nil;
 
 let rev = foldl (flip cons) nil;
 
-# Int
+# Int ##############################################################################################
 # Balanced ternary as described in:
 # Mogensen, T.Æ. (2001). An Investigation of Compact and Efficient Number Representations in the
 # Pure Lambda Calculus. In: Bjørner, D., Broy, M., Zamulin, A.V. (eds) Perspectives of System
@@ -170,20 +170,18 @@ let div = \x y.fst (divrem x y);
 
 let rem = \x y.snd (divrem x y);
 
-# TODO replace 48 and 45 with '0' and '-' when we have char literals
 let intToString =
   let posIntToString = \n s.(divrem n 10) \q r.
-    let s' = (cons (add r 48) s);
+    let s' = (cons (add r '0') s);
     (zero? q) s' (posIntToString q s');
   \n.
     (neg? n)
-      (cons 45 (posIntToString (neg n) nil))
+      (cons '-' (posIntToString (neg n) nil))
       (posIntToString n nil);
 
-# TODO replace 48 and 45 with '0' and '-' when we have char literals
 let stringToInt =
-  let posStringToInt = foldl (\n d.add (mul n 10) (sub d 48)) 0;
+  let posStringToInt = foldl (\n d.add (mul n 10) (sub d '0')) 0;
   \s.
-    (eq 45 (head s))
+    (eq '-' (head s))
       (neg (posStringToInt (tail s)))
       (posStringToInt s);

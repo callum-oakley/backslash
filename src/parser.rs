@@ -81,6 +81,7 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
             r"\" => parse_abs(tokens),
             "let" => parse_let(tokens),
             token if is_int(token) => parse_int(tokens),
+            token if is_char(token) => parse_char(tokens),
             _ => parse_identifier(tokens).map(Sugar::Var),
         }?);
     }
@@ -133,6 +134,15 @@ fn parse_int<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     next(tokens)?.parse().map(Sugar::Int).map_err(Into::into)
 }
 
+fn parse_char<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
+    let token = next(tokens)?;
+    match token.as_bytes() {
+        // TODO escape sequences
+        &[b'\'', c, b'\''] => Ok(Sugar::Int(c.into())),
+        _ => bail!("malformed char '{token}'"),
+    }
+}
+
 fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
     let token = next(tokens)?;
     if matches!(token, r"\" | "." | "(" | ")" | "let" | "=" | ";") {
@@ -146,6 +156,10 @@ fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a st
 
 fn is_int(s: &str) -> bool {
     matches!(s.as_bytes(), [c, ..] | [b'+' | b'-', c, ..] if c.is_ascii_digit())
+}
+
+fn is_char(s: &str) -> bool {
+    s.as_bytes()[0] == b'\''
 }
 
 fn is_eof(tokens: &mut Peekable<Matches>) -> bool {
