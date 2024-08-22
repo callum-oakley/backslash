@@ -155,16 +155,16 @@ let gte = \x y.not (lt x y);
 let divrem = \n d.
   (neg? d)
     (divrem n (neg d) \q r.pair (neg q) r)
-  (neg? n)
-    (divrem (neg n) d \q r.
-      (zero? r)
-        (pair (neg q) 0)
-        (pair (dec (neg q)) (sub d r)))
-  let posDivrem = \q r.
-    (lt r d)
-      (pair q r)
-      (posDivrem (inc q) (sub r d));
-  (posDivrem 0 n);
+    ((neg? n)
+      (divrem (neg n) d \q r.
+        (zero? r)
+          (pair (neg q) 0)
+          (pair (dec (neg q)) (sub d r)))
+      let posDivrem = \q r.
+        (lt r d)
+          (pair q r)
+          (posDivrem (inc q) (sub r d));
+      (posDivrem 0 n));
 
 let div = \x y.fst (divrem x y);
 
@@ -173,7 +173,7 @@ let rem = \x y.snd (divrem x y);
 let intToString =
   let posIntToString = \n s.(divrem n 10) \q r.
     let s* = (cons (add r '0') s);
-    (zero? q) s* (posIntToString q s');
+    (zero? q) s* (posIntToString q s*);
   \n.
     (neg? n)
       (cons '-' (posIntToString (neg n) nil))

@@ -6,7 +6,8 @@ use regex::{Match, Matches, Regex};
 
 use crate::{bytes, int, term::Term};
 
-const TOKENS: &str = r#"#.*|'(\\.|[^'])'|"(\\.|[^"])*"|[\\\.\(\);]|[^#'"\\\.\(\);\s]+"#;
+// TODO replace regex tokenisation. It's getting a bit ridiculous.
+const TOKENS: &str = r#"#.*|'(\\.|[^'])'|"(\\.|[^"])*"|[\\\.\(\)\[\],;]|[^#'"\\\.\(\)\[\],;\s]+"#;
 
 impl FromStr for Term {
     type Err = anyhow::Error;
@@ -77,13 +78,14 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     while !is_eof(tokens) {
         let token = peek(tokens)?;
         terms.push(match token {
-            ")" | ";" => {
+            ")" | "]" | "," | ";" => {
                 break;
             }
             "." | "=" => bail!("parser: unexpected '{token}'"),
             "(" => parse_bracketed(tokens),
             r"\" => parse_abs(tokens),
             "let" => parse_let(tokens),
+            "[" => parse_list(tokens),
             token if is_int(token) => parse_int(tokens),
             token if is_char(token) => parse_char(tokens),
             token if is_string(token) => parse_string(tokens),
@@ -174,15 +176,47 @@ fn parse_string<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>>
     Ok(Sugar::Bytes(bytes))
 }
 
+fn parse_list<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
+    consume("[", tokens)?;
+
+    let mut terms = Vec::new();
+    loop {
+        terms.push(parse_term(tokens)?);
+
+        match next(tokens)? {
+            "," => (),
+            "]" => break,
+            token => bail!("unexpected '{token}'"),
+        }
+    }
+
+    Ok(encode_list(terms.into_iter()))
+}
+
 fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
     let token = next(tokens)?;
-    if matches!(token, r"\" | "." | "(" | ")" | "let" | "=" | ";") {
+    if matches!(
+        token,
+        r"\" | "." | "(" | ")" | "[" | "]" | "," | "let" | "=" | ";"
+    ) {
         bail!("parser: unexpected '{token}'");
     }
-    if is_int(token) {
-        bail!("parser: identifier can't be an int");
+    if is_int(token) | is_char(token) | is_string(token) {
+        bail!("parser: malformed identifier '{token}'");
     }
     Ok(token)
+}
+
+fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>) -> Sugar<'a> {
+    lazy_static! {
+        static ref NIL: Sugar<'static> = parse(r"\ifnil ifcons.ifnil").unwrap();
+        static ref CONS: Sugar<'static> = parse(r"\a b ifnil ifcons.ifcons a b").unwrap();
+    }
+    if let Some(term) = terms.next() {
+        app(app(CONS.clone(), term), encode_list(terms))
+    } else {
+        NIL.clone()
+    }
 }
 
 fn is_int(s: &str) -> bool {
