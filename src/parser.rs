@@ -1,13 +1,13 @@
-use std::{iter::Peekable, str::FromStr};
+use std::{
+    fmt::{self, Display},
+    iter::Peekable,
+    str::FromStr,
+};
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use lazy_static::lazy_static;
-use regex::{Match, Matches, Regex};
 
 use crate::{bytes, int, term::Term};
-
-// TODO replace regex tokenisation. It's getting a bit ridiculous.
-const TOKENS: &str = r#"#.*|'(\\.|[^'])'|"(\\.|[^"])*"|[\\\.\(\)\[\],;]|[^#'"\\\.\(\)\[\],;\s]+"#;
 
 impl FromStr for Term {
     type Err = anyhow::Error;
@@ -30,7 +30,7 @@ impl FromStr for Term {
                 }
                 Sugar::App(s, t) => Ok(Term::app(desugar(scope, s)?, desugar(scope, t)?)),
                 Sugar::Int(n) => Ok(int::encode(*n)),
-                Sugar::Bytes(bytes) => Ok(bytes::encode(bytes)),
+                Sugar::String(s) => Ok(bytes::encode(s.as_bytes())),
             }
         }
 
@@ -45,7 +45,7 @@ enum Sugar<'a> {
     Abs(&'a str, Box<Self>),
     App(Box<Self>, Box<Self>),
     Int(i64),
-    Bytes(Vec<u8>),
+    String(String),
 }
 
 fn abs<'a>(arg: &'a str, body: Sugar<'a>) -> Sugar<'a> {
@@ -57,11 +57,7 @@ fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
 }
 
 fn parse(input: &str) -> Result<Sugar> {
-    lazy_static! {
-        static ref TOKENS_RE: Regex = Regex::new(TOKENS).unwrap();
-    }
-
-    let mut tokens = TOKENS_RE.find_iter(input).peekable();
+    let mut tokens = Tokens::new(input).peekable();
     let term = parse_term(&mut tokens)?;
     if !is_eof(&mut tokens) {
         bail!("parser: unexpected '{}'", peek(&mut tokens)?);
@@ -69,27 +65,22 @@ fn parse(input: &str) -> Result<Sugar> {
     Ok(term)
 }
 
-fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    while peek(tokens)?.starts_with('#') {
-        next(tokens)?;
-    }
-
+fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     let mut terms = Vec::new();
     while !is_eof(tokens) {
         let token = peek(tokens)?;
         terms.push(match token {
-            ")" | "]" | "," | ";" => {
+            Token::Backslash => parse_abs(tokens),
+            Token::LParen => parse_bracketed(tokens),
+            Token::LSquare => parse_list(tokens),
+            Token::Let => parse_let(tokens),
+            Token::Int(_) => parse_int(tokens),
+            Token::String(_) => parse_string(tokens),
+            Token::Identifier(_) => parse_identifier(tokens).map(Sugar::Var),
+            Token::RParen | Token::RSquare | Token::Comma | Token::Semi => {
                 break;
             }
-            "." | "=" => bail!("parser: unexpected '{token}'"),
-            "(" => parse_bracketed(tokens),
-            r"\" => parse_abs(tokens),
-            "let" => parse_let(tokens),
-            "[" => parse_list(tokens),
-            token if is_int(token) => parse_int(tokens),
-            token if is_char(token) => parse_char(tokens),
-            token if is_string(token) => parse_string(tokens),
-            _ => parse_identifier(tokens).map(Sugar::Var),
+            Token::Dot | Token::Eq => bail!("parser: unexpected '{token}'"),
         }?);
     }
 
@@ -103,89 +94,64 @@ fn parse_term<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     }
 }
 
-fn parse_bracketed<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    consume("(", tokens)?;
+fn parse_bracketed<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    consume(&Token::LParen, tokens)?;
     let res = parse_term(tokens);
-    consume(")", tokens)?;
+    consume(&Token::RParen, tokens)?;
     res
 }
 
-fn parse_abs<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    consume(r"\", tokens)?;
+fn parse_abs<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    consume(&Token::Backslash, tokens)?;
     let mut args = Vec::new();
-    while peek(tokens)? != "." {
+    while peek(tokens)? != &Token::Dot {
         args.push(parse_identifier(tokens)?);
     }
-    consume(".", tokens)?;
+    consume(&Token::Dot, tokens)?;
     let body = parse_term(tokens)?;
 
     Ok(args.iter().rev().fold(body, |body, arg| abs(arg, body)))
 }
 
-fn parse_let<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
+fn parse_let<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     lazy_static! {
         static ref FIX: Sugar<'static> = parse(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
     }
 
-    consume("let", tokens)?;
+    consume(&Token::Let, tokens)?;
     let arg = parse_identifier(tokens)?;
-    consume("=", tokens)?;
+    consume(&Token::Eq, tokens)?;
     let s = parse_term(tokens)?;
-    consume(";", tokens)?;
+    consume(&Token::Semi, tokens)?;
     let t = parse_term(tokens)?;
 
     Ok(app(abs(arg, t), app(FIX.clone(), abs(arg, s))))
 }
 
-fn parse_int<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    next(tokens)?.parse().map(Sugar::Int).map_err(Into::into)
-}
-
-fn parse_char<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    let token = next(tokens)?;
-    match token.as_bytes() {
-        b"'\\n'" => Ok(Sugar::Int(b'\n'.into())),
-        b"'\\r'" => Ok(Sugar::Int(b'\r'.into())),
-        b"'\\t'" => Ok(Sugar::Int(b'\t'.into())),
-        [b'\'', c, b'\''] | [b'\'', b'\\', c, b'\''] => Ok(Sugar::Int((*c).into())),
-        _ => bail!("parser: malformed char '{token}'"),
+fn parse_int<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    match next(tokens)? {
+        Token::Int(n) => Ok(Sugar::Int(n)),
+        token => bail!("parser: unexpected '{token}'"),
     }
 }
 
-fn parse_string<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    let token = next(tokens)?.as_bytes();
-    assert_eq!(token[0], b'"');
-    assert_eq!(token[token.len() - 1], b'"');
-    let mut bytes = Vec::new();
-    let mut escape = false;
-    for &c in &token[1..token.len() - 1] {
-        if escape {
-            match c {
-                b'n' => bytes.push(b'\n'),
-                b'r' => bytes.push(b'\r'),
-                b't' => bytes.push(b'\t'),
-                c => bytes.push(c),
-            }
-            escape = false;
-        } else if c == b'\\' {
-            escape = true;
-        } else {
-            bytes.push(c);
-        }
+fn parse_string<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    match next(tokens)? {
+        Token::String(s) => Ok(Sugar::String(s)),
+        token => bail!("parser: unexpected '{token}'"),
     }
-    Ok(Sugar::Bytes(bytes))
 }
 
-fn parse_list<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
-    consume("[", tokens)?;
+fn parse_list<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    consume(&Token::LSquare, tokens)?;
 
     let mut terms = Vec::new();
     loop {
         terms.push(parse_term(tokens)?);
 
         match next(tokens)? {
-            "," => (),
-            "]" => break,
+            Token::Comma => (),
+            Token::RSquare => break,
             token => bail!("unexpected '{token}'"),
         }
     }
@@ -193,18 +159,11 @@ fn parse_list<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<Sugar<'a>> {
     Ok(encode_list(terms.into_iter()))
 }
 
-fn parse_identifier<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
-    let token = next(tokens)?;
-    if matches!(
-        token,
-        r"\" | "." | "(" | ")" | "[" | "]" | "," | "let" | "=" | ";"
-    ) {
-        bail!("parser: unexpected '{token}'");
+fn parse_identifier<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<&'a str> {
+    match next(tokens)? {
+        Token::Identifier(i) => Ok(i),
+        token => bail!("parser: unexpected '{token}'"),
     }
-    if is_int(token) | is_char(token) | is_string(token) {
-        bail!("parser: malformed identifier '{token}'");
-    }
-    Ok(token)
 }
 
 fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>) -> Sugar<'a> {
@@ -219,32 +178,200 @@ fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>) -> Sugar<'a> {
     }
 }
 
-fn is_int(s: &str) -> bool {
-    matches!(s.as_bytes(), [c, ..] | [b'+' | b'-', c, ..] if c.is_ascii_digit())
-}
-
-fn is_char(s: &str) -> bool {
-    s.as_bytes()[0] == b'\''
-}
-
-fn is_string(s: &str) -> bool {
-    s.as_bytes()[0] == b'"'
-}
-
-fn is_eof(tokens: &mut Peekable<Matches>) -> bool {
+fn is_eof(tokens: &mut Peekable<Tokens>) -> bool {
     tokens.peek().is_none()
 }
 
-fn peek<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
-    tokens.peek().context("parser: EOF").map(Match::as_str)
+fn peek<'a, 'b>(tokens: &'b mut Peekable<Tokens<'a>>) -> Result<&'b Token<'a>> {
+    tokens
+        .peek()
+        .context("parser: EOF")
+        .and_then(|r| r.as_ref().map_err(|err| anyhow!("{err}")))
 }
 
-fn next<'a>(tokens: &mut Peekable<Matches<'_, 'a>>) -> Result<&'a str> {
-    tokens.next().context("parser: EOF").map(|m| m.as_str())
+fn next<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Token<'a>> {
+    tokens.next().context("parser: EOF")?
 }
 
-fn consume(expected: &str, tokens: &mut Peekable<Matches>) -> Result<()> {
+fn consume(expected: &Token, tokens: &mut Peekable<Tokens>) -> Result<()> {
     let token = next(tokens)?;
-    ensure!(token == expected, "parser: unexpected '{token}'");
+    ensure!(&token == expected, "parser: unexpected '{token}'");
     Ok(())
+}
+
+#[derive(PartialEq)]
+enum Token<'a> {
+    Backslash,
+    Dot,
+    LParen,
+    RParen,
+    LSquare,
+    RSquare,
+    Let,
+    Eq,
+    Semi,
+    Comma,
+    Int(i64),
+    String(String),
+    Identifier(&'a str),
+}
+
+impl<'a> Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Backslash => write!(f, "\\"),
+            Token::Dot => write!(f, "."),
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::LSquare => write!(f, "["),
+            Token::RSquare => write!(f, "]"),
+            Token::Let => write!(f, "let"),
+            Token::Eq => write!(f, "="),
+            Token::Semi => write!(f, ";"),
+            Token::Comma => write!(f, ","),
+            Token::Int(n) => write!(f, "{n}"),
+            Token::String(s) => write!(f, "{s}"),
+            Token::Identifier(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+struct Tokens<'a> {
+    input: &'a str,
+    i: usize,
+}
+
+impl<'a> Tokens<'a> {
+    fn new(input: &'a str) -> Self {
+        Tokens { input, i: 0 }
+    }
+
+    fn punctuation(&mut self, c: u8, token: Token<'a>) -> Result<Token<'a>> {
+        self.consume(c)?;
+        Ok(token)
+    }
+
+    fn char(&mut self) -> Result<Token<'a>> {
+        self.consume(b'\'')?;
+        let c = self.char_sequence()?;
+        self.consume(b'\'')?;
+        Ok(Token::Int(c.into()))
+    }
+
+    fn string(&mut self) -> Result<Token<'a>> {
+        self.consume(b'"')?;
+        let mut s = Vec::new();
+        while self.peek()? != b'"' {
+            s.push(self.char_sequence()?);
+        }
+        self.consume(b'"')?;
+        Ok(Token::String(String::from_utf8(s)?))
+    }
+
+    fn int(&mut self) -> Result<Token<'a>> {
+        let start = self.i;
+        while !self.is_eof() && !is_reserved(self.peek()?) {
+            self.next()?;
+        }
+        Ok(Token::Int(self.input[start..self.i].parse()?))
+    }
+
+    fn identifier(&mut self) -> Result<Token<'a>> {
+        let start = self.i;
+        while !self.is_eof() && !is_reserved(self.peek()?) {
+            self.next()?;
+        }
+        let s = &self.input[start..self.i];
+        if s == "let" {
+            Ok(Token::Let)
+        } else {
+            Ok(Token::Identifier(s))
+        }
+    }
+
+    fn char_sequence(&mut self) -> Result<u8> {
+        Ok(if self.peek()? == b'\\' {
+            self.consume(b'\\')?;
+            match self.next()? {
+                b'n' => b'\n',
+                b'r' => b'\r',
+                b't' => b'\t',
+                c => c,
+            }
+        } else {
+            self.next()?
+        })
+    }
+
+    fn consume_whitespace(&mut self) -> Result<()> {
+        while !self.is_eof() {
+            match self.peek()? {
+                b'#' => while self.next()? != b'\n' {},
+                c if c.is_ascii_whitespace() => {
+                    self.next()?;
+                }
+                _ => break,
+            }
+        }
+        Ok(())
+    }
+
+    fn is_eof(&self) -> bool {
+        self.input.as_bytes().get(self.i).is_none()
+    }
+
+    fn peek(&self) -> Result<u8> {
+        self.input
+            .as_bytes()
+            .get(self.i)
+            .copied()
+            .context("parser: EOF")
+    }
+
+    fn next(&mut self) -> Result<u8> {
+        let c = self.peek()?;
+        self.i += 1;
+        Ok(c)
+    }
+
+    fn consume(&mut self, expected: u8) -> Result<()> {
+        let c = self.next()?;
+        ensure!(c == expected, "parser: expected {expected} but got {c}");
+        Ok(())
+    }
+}
+
+/// Characters that can't appear in an identifier or an int.
+fn is_reserved(c: u8) -> bool {
+    br#"#\.()[];,'""#.contains(&c) || c.is_ascii_whitespace()
+}
+
+impl<'a> Iterator for Tokens<'a> {
+    type Item = Result<Token<'a>>;
+
+    fn next(&mut self) -> Option<Result<Token<'a>>> {
+        if let Err(err) = self.consume_whitespace() {
+            return Some(Err(err));
+        }
+
+        if self.is_eof() {
+            return None;
+        }
+
+        Some(self.peek().and_then(|c| match c {
+            b'\\' => self.punctuation(c, Token::Backslash),
+            b'.' => self.punctuation(c, Token::Dot),
+            b'=' => self.punctuation(c, Token::Eq),
+            b'(' => self.punctuation(c, Token::LParen),
+            b')' => self.punctuation(c, Token::RParen),
+            b'[' => self.punctuation(c, Token::LSquare),
+            b']' => self.punctuation(c, Token::RSquare),
+            b';' => self.punctuation(c, Token::Semi),
+            b',' => self.punctuation(c, Token::Comma),
+            b'\'' => self.char(),
+            b'"' => self.string(),
+            b'-' | b'+' | b'0'..=b'9' => self.int(),
+            _ => self.identifier(),
+        }))
+    }
 }
