@@ -31,6 +31,7 @@ impl FromStr for Term {
                 Sugar::App(s, t) => Ok(Term::app(desugar(scope, s)?, desugar(scope, t)?)),
                 Sugar::Int(n) => Ok(int::encode(*n)),
                 Sugar::String(s) => Ok(bytes::encode(s.as_bytes())),
+                Sugar::Test(_, _, term) => Ok(desugar(scope, term)?),
             }
         }
 
@@ -46,6 +47,7 @@ enum Sugar<'a> {
     App(Box<Self>, Box<Self>),
     Int(i64),
     String(String),
+    Test(Box<Self>, Box<Self>, Box<Self>),
 }
 
 fn abs<'a>(arg: &'a str, body: Sugar<'a>) -> Sugar<'a> {
@@ -54,6 +56,10 @@ fn abs<'a>(arg: &'a str, body: Sugar<'a>) -> Sugar<'a> {
 
 fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
     Sugar::App(Box::new(s), Box::new(t))
+}
+
+fn test<'a>(lhs: Sugar<'a>, rhs: Sugar<'a>, term: Sugar<'a>) -> Sugar<'a> {
+    Sugar::Test(Box::new(lhs), Box::new(rhs), Box::new(term))
 }
 
 fn parse(input: &str) -> Result<Sugar> {
@@ -74,13 +80,11 @@ fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
             Token::LParen => parse_bracketed(tokens),
             Token::LSquare => parse_list(tokens),
             Token::Let => parse_let(tokens),
+            Token::Exclamation => parse_test(tokens),
             Token::Int(_) => parse_int(tokens),
             Token::String(_) => parse_string(tokens),
             Token::Identifier(_) => parse_identifier(tokens).map(Sugar::Var),
-            Token::RParen | Token::RSquare | Token::Comma | Token::Semi => {
-                break;
-            }
-            Token::Dot | Token::Eq => bail!("parser: unexpected '{token}'"),
+            _ => break,
         }?);
     }
 
@@ -126,6 +130,16 @@ fn parse_let<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     let t = parse_term(tokens)?;
 
     Ok(app(abs(arg, t), app(FIX.clone(), abs(arg, s))))
+}
+
+fn parse_test<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    consume(&Token::Exclamation, tokens)?;
+    let lhs = parse_term(tokens)?;
+    consume(&Token::Eq, tokens)?;
+    let rhs = parse_term(tokens)?;
+    consume(&Token::Semi, tokens)?;
+    let term = parse_term(tokens)?;
+    Ok(test(lhs, rhs, term))
 }
 
 fn parse_int<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
@@ -211,6 +225,7 @@ enum Token<'a> {
     Eq,
     Semi,
     Comma,
+    Exclamation,
     Int(i64),
     String(String),
     Identifier(&'a str),
@@ -229,6 +244,7 @@ impl<'a> Display for Token<'a> {
             Token::Eq => write!(f, "="),
             Token::Semi => write!(f, ";"),
             Token::Comma => write!(f, ","),
+            Token::Exclamation => write!(f, "!"),
             Token::Int(n) => write!(f, "{n}"),
             Token::String(s) => write!(f, "{s}"),
             Token::Identifier(i) => write!(f, "{i}"),
@@ -368,6 +384,7 @@ impl<'a> Iterator for Tokens<'a> {
             b']' => self.punctuation(c, Token::RSquare),
             b';' => self.punctuation(c, Token::Semi),
             b',' => self.punctuation(c, Token::Comma),
+            b'!' => self.punctuation(c, Token::Exclamation),
             b'\'' => self.char(),
             b'"' => self.string(),
             b'-' | b'+' | b'0'..=b'9' => self.int(),
