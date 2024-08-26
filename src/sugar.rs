@@ -395,7 +395,7 @@ impl<'a> Iterator for Tokens<'a> {
             b'=' => self.eq(),
             b'\'' => self.char(),
             b'"' => self.string(),
-            b'-' | b'+' | b'0'..=b'9' => self.int(),
+            b'-' | b'0'..=b'9' => self.int(),
             _ => self.identifier(),
         }))
     }
