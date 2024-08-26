@@ -1,7 +1,6 @@
 use std::{
     fmt::{self, Display},
     iter::Peekable,
-    str::FromStr,
 };
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
@@ -9,11 +8,29 @@ use lazy_static::lazy_static;
 
 use crate::{bytes, int, term::Term};
 
-impl FromStr for Term {
-    type Err = anyhow::Error;
+/// A term with named variables and some sugar yet to be encoded as pure lambda calculus terms.
+#[derive(Clone)]
+pub enum Sugar<'a> {
+    Var(&'a str),
+    Abs(&'a str, Box<Self>),
+    App(Box<Self>, Box<Self>),
+    Int(i64),
+    String(String),
+    Test(Box<Self>, Box<Self>, Box<Self>),
+}
 
-    fn from_str(s: &str) -> Result<Self> {
-        fn desugar<'a>(scope: &mut Vec<&'a str>, term: &'a Sugar) -> Result<Term> {
+impl<'a> Sugar<'a> {
+    pub fn parse(input: &'a str) -> Result<Self> {
+        let mut tokens = Tokens::new(input).peekable();
+        let term = parse_term(&mut tokens)?;
+        if !is_eof(&mut tokens) {
+            bail!("parser: unexpected '{}'", peek(&mut tokens)?);
+        }
+        Ok(term)
+    }
+
+    pub fn desugar(&self) -> Result<Term> {
+        fn with_scope<'a>(scope: &mut Vec<&'a str>, term: &'a Sugar) -> Result<Term> {
             match term {
                 Sugar::Var(x) => {
                     if let Some((i, _)) = scope.iter().rev().enumerate().find(|&(_, v)| x == v) {
@@ -24,30 +41,19 @@ impl FromStr for Term {
                 }
                 Sugar::Abs(arg, body) => {
                     scope.push(arg);
-                    let res = Term::abs(desugar(scope, body)?);
+                    let res = Term::abs(with_scope(scope, body)?);
                     scope.pop();
                     Ok(res)
                 }
-                Sugar::App(s, t) => Ok(Term::app(desugar(scope, s)?, desugar(scope, t)?)),
+                Sugar::App(s, t) => Ok(Term::app(with_scope(scope, s)?, with_scope(scope, t)?)),
                 Sugar::Int(n) => Ok(int::encode(*n)),
                 Sugar::String(s) => Ok(bytes::encode(s.as_bytes())),
-                Sugar::Test(_, _, term) => Ok(desugar(scope, term)?),
+                Sugar::Test(_, _, term) => Ok(with_scope(scope, term)?),
             }
         }
 
-        desugar(&mut Vec::new(), &parse(s)?)
+        with_scope(&mut Vec::new(), self)
     }
-}
-
-/// A term with named variables and some sugar yet to be encoded as pure lambda calculus terms.
-#[derive(Clone)]
-enum Sugar<'a> {
-    Var(&'a str),
-    Abs(&'a str, Box<Self>),
-    App(Box<Self>, Box<Self>),
-    Int(i64),
-    String(String),
-    Test(Box<Self>, Box<Self>, Box<Self>),
 }
 
 fn abs<'a>(arg: &'a str, body: Sugar<'a>) -> Sugar<'a> {
@@ -60,15 +66,6 @@ fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
 
 fn test<'a>(lhs: Sugar<'a>, rhs: Sugar<'a>, term: Sugar<'a>) -> Sugar<'a> {
     Sugar::Test(Box::new(lhs), Box::new(rhs), Box::new(term))
-}
-
-fn parse(input: &str) -> Result<Sugar> {
-    let mut tokens = Tokens::new(input).peekable();
-    let term = parse_term(&mut tokens)?;
-    if !is_eof(&mut tokens) {
-        bail!("parser: unexpected '{}'", peek(&mut tokens)?);
-    }
-    Ok(term)
 }
 
 fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
@@ -119,7 +116,7 @@ fn parse_abs<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
 
 fn parse_let<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     lazy_static! {
-        static ref FIX: Sugar<'static> = parse(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
+        static ref FIX: Sugar<'static> = Sugar::parse(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
     }
 
     consume(&Token::Let, tokens)?;
@@ -182,8 +179,8 @@ fn parse_identifier<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<&'a str> {
 
 fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>) -> Sugar<'a> {
     lazy_static! {
-        static ref NIL: Sugar<'static> = parse(r"\ifnil ifcons.ifnil").unwrap();
-        static ref CONS: Sugar<'static> = parse(r"\a b ifnil ifcons.ifcons a b").unwrap();
+        static ref NIL: Sugar<'static> = Sugar::parse(r"\ifnil ifcons.ifnil").unwrap();
+        static ref CONS: Sugar<'static> = Sugar::parse(r"\a b ifnil ifcons.ifcons a b").unwrap();
     }
     if let Some(term) = terms.next() {
         app(app(CONS.clone(), term), encode_list(terms))
