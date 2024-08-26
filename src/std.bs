@@ -1,69 +1,61 @@
 # Bool #############################################################################################
 
-let true = \iftrue iffalse.iftrue;
+true = \iftrue iffalse.iftrue;
 
-let false = \iftrue iffalse.iffalse;
+false = \iftrue iffalse.iffalse;
 
-let not = \a.a false true;
+not = \a.a false true;
 
-let and = \a b.a b false;
+and = \a b.a b false;
 
-let or = \a b.a true b;
-
-! not true = false;
-! not false = true;
-! and true true = true;
-! and true false = false;
-! and false true = false;
-! and false false = false;
-! or true true = true;
-! or true false = true;
-! or false true = true;
-! or false false = false;
+or = \a b.a true b;
 
 # Function #########################################################################################
 
-let id = \x.x;
+id = \x.x;
 
-let comp = \f g x.f (g x);
+comp = \f g x.f (g x);
 
-let flip = \f x y.f y x;
+flip = \f x y.f y x;
 
-let fix = \f.(\x.f (x x)) (\x.f (x x));
+fix = \f.(\x.f (x x)) (\x.f (x x));
 
 # Pair #############################################################################################
 
-let pair = \a b ifpair.ifpair a b;
+pair = \a b ifpair.ifpair a b;
 
-let fst = \pair.pair \a b.a;
+fst = \pair.pair \a b.a;
 
-let snd = \pair.pair \a b.b;
+snd = \pair.pair \a b.b;
 
 # List #############################################################################################
 
-let nil = \ifnil ifcons.ifnil;
+nil = \ifnil ifcons.ifnil;
 
-let cons = \head tail ifnil ifcons.ifcons head tail;
+cons = \head tail ifnil ifcons.ifcons head tail;
 
-let head = \list.list
+head = \list.list
   nil
   \head tail.head;
 
-let tail = \list.list
+tail = \list.list
   nil
   \head tail.tail;
 
-let foldr = \f init list.list
+foldr = \f init list.list
   init
   \head tail.f head (foldr f init tail);
 
-let foldl = \f init list.list
+foldl = \f init list.list
   init
   \head tail.foldl f (f init head) tail;
 
-let map = \f.foldr (comp cons f) nil;
+map = \f.foldr (comp cons f) nil;
 
-let rev = foldl (flip cons) nil;
+rev = foldl (flip cons) nil;
+
+! map head ["back", "slash"] == "bs";
+! rev "rev" == "ver";
 
 # Int ##############################################################################################
 # Balanced ternary as described in:
@@ -72,98 +64,98 @@ let rev = foldl (flip cons) nil;
 # Informatics. PSI 2001. Lecture Notes in Computer Science, vol 2244. Springer, Berlin, Heidelberg.
 # https://doi.org/10.1007/3-540-45575-2_20
 
-let up- = \n z x- x0 x+.x- (n z x- x0 x+);
+up- = \n z x- x0 x+.x- (n z x- x0 x+);
 
-let up0 = \n z x- x0 x+.x0 (n z x- x0 x+);
+up0 = \n z x- x0 x+.x0 (n z x- x0 x+);
 
-let up+ = \n z x- x0 x+.x+ (n z x- x0 x+);
+up+ = \n z x- x0 x+.x+ (n z x- x0 x+);
 
-let zero? = \n.n true (\x.false) id (\x.false);
+zero? = \n.n true (\x.false) id (\x.false);
 
-let pos? =
-  let Z = pair false false;
-  let A- = \p.p \done res.done p (pair true false);
-  let A0 = id;
-  let A+ = \p.p \done res.done p (pair true true);
+pos? =
+  Z = pair false false;
+  A- = \p.p \done res.done p (pair true false);
+  A0 = id;
+  A+ = \p.p \done res.done p (pair true true);
   \n.snd (n Z A- A0 A+);
 
-let neg? =
-  let Z = pair false false;
-  let A- = \p.p \done res.done p (pair true true);
-  let A0 = id;
-  let A+ = \p.p \done res.done p (pair true false);
+neg? =
+  Z = pair false false;
+  A- = \p.p \done res.done p (pair true true);
+  A0 = id;
+  A+ = \p.p \done res.done p (pair true false);
   \n.snd (n Z A- A0 A+);
 
-let inc =
-  let Z = pair 0 1;
-  let A- = \p.p \n m.pair (up- n) (up0 n);
-  let A0 = \p.p \n m.pair (up0 n) (up+ n);
-  let A+ = \p.p \n m.pair (up+ n) (up- m);
+inc =
+  Z = pair 0 1;
+  A- = \p.p \n m.pair (up- n) (up0 n);
+  A0 = \p.p \n m.pair (up0 n) (up+ n);
+  A+ = \p.p \n m.pair (up+ n) (up- m);
   \n.snd (n Z A- A0 A+);
 
-let dec =
-  let Z = pair 0 -1;
-  let A- = \p.p \n m.pair (up- n) (up+ m);
-  let A0 = \p.p \n m.pair (up0 n) (up- n);
-  let A+ = \p.p \n m.pair (up+ n) (up0 n);
+dec =
+  Z = pair 0 -1;
+  A- = \p.p \n m.pair (up- n) (up+ m);
+  A0 = \p.p \n m.pair (up0 n) (up- n);
+  A+ = \p.p \n m.pair (up+ n) (up0 n);
   \n.snd (n Z A- A0 A+);
 
-let lift =
-  let A- = \n z x- x0 x+.x- n;
-  let A0 = \n z x- x0 x+.x0 n;
-  let A+ = \n z x- x0 x+.x+ n;
+lift =
+  A- = \n z x- x0 x+.x- n;
+  A0 = \n z x- x0 x+.x0 n;
+  A+ = \n z x- x0 x+.x+ n;
   \n.n 0 A- A0 A+;
 
-let drop =
-  let A- = \m.up- (drop m);
-  let A0 = \m.up0 (drop m);
-  let A+ = \m.up+ (drop m);
+drop =
+  A- = \m.up- (drop m);
+  A0 = \m.up0 (drop m);
+  A+ = \m.up+ (drop m);
   \n.n 0 A- A0 A+;
 
 # We could define this later as `\x y.zero? (sub x y)` but it's a nice example of the technique used
 # to implement add, while being slightly simpler than add.
-let eq =
-  let Z = \n.zero? (drop n);
-  let A- = \e n.n false (\m.e m) (\m.false) (\m.false);
-  let A0 = \e n.n (e n) (\m.false) (\m.e m) (\m.false);
-  let A+ = \e n.n false (\m.false) (\m.false) (\m.e m);
-  let go = \n.n Z A- A0 A+;
+eq =
+  Z = \n.zero? (drop n);
+  A- = \e n.n false (\m.e m) (\m.false) (\m.false);
+  A0 = \e n.n (e n) (\m.false) (\m.e m) (\m.false);
+  A+ = \e n.n false (\m.false) (\m.false) (\m.e m);
+  go = \n.n Z A- A0 A+;
   \x y.go x (lift y);
 
-let add =
-  let trit- = \x- x0 x+.x-;
-  let trit0 = \x- x0 x+.x0;
-  let trit+ = \x- x0 x+.x+;
-  let Z = \n c.c (dec (drop n)) (drop n) (inc (drop n));
-  let C = \a n.a n trit0;
-  let B-- = \a c m.c (up0 (a m trit-)) (up+ (a m trit-)) (up- (a m trit0));
-  let B0- = \a c m.c (up+ (a m trit-)) (up- (a m trit0)) (up0 (a m trit0));
-  let B00 = \a c m.c (up- (a m trit0)) (up0 (a m trit0)) (up+ (a m trit0));
-  let B0+ = \a c m.c (up0 (a m trit0)) (up+ (a m trit0)) (up- (a m trit+));
-  let B++ = \a c m.c (up+ (a m trit0)) (up- (a m trit+)) (up0 (a m trit+));
-  let A- = \a n c.n (B0- a c n) (B-- a c) (B0- a c) (B00 a c);
-  let A0 = \a n c.n (B00 a c n) (B0- a c) (B00 a c) (B0+ a c);
-  let A+ = \a n c.n (B0+ a c n) (B00 a c) (B0+ a c) (B++ a c);
-  let go = \n.C (n Z A- A0 A+);
+add =
+  trit- = \x- x0 x+.x-;
+  trit0 = \x- x0 x+.x0;
+  trit+ = \x- x0 x+.x+;
+  Z = \n c.c (dec (drop n)) (drop n) (inc (drop n));
+  C = \a n.a n trit0;
+  B-- = \a c m.c (up0 (a m trit-)) (up+ (a m trit-)) (up- (a m trit0));
+  B0- = \a c m.c (up+ (a m trit-)) (up- (a m trit0)) (up0 (a m trit0));
+  B00 = \a c m.c (up- (a m trit0)) (up0 (a m trit0)) (up+ (a m trit0));
+  B0+ = \a c m.c (up0 (a m trit0)) (up+ (a m trit0)) (up- (a m trit+));
+  B++ = \a c m.c (up+ (a m trit0)) (up- (a m trit+)) (up0 (a m trit+));
+  A- = \a n c.n (B0- a c n) (B-- a c) (B0- a c) (B00 a c);
+  A0 = \a n c.n (B00 a c n) (B0- a c) (B00 a c) (B0+ a c);
+  A+ = \a n c.n (B0+ a c n) (B00 a c) (B0+ a c) (B++ a c);
+  go = \n.C (n Z A- A0 A+);
   \x y.go x (lift y);
 
-let neg = \n z x- x0 x+.n z x+ x0 x-;
+neg = \n z x- x0 x+.n z x+ x0 x-;
 
-let sub = \x y.add x (neg y);
+sub = \x y.add x (neg y);
 
-let mul = \n m.n 0 (\n.sub (up0 n) m) (\n.up0 n) (\n.add (up0 n) m);
+mul = \n m.n 0 (\n.sub (up0 n) m) (\n.up0 n) (\n.add (up0 n) m);
 
-let lt = \x y.neg? (sub x y);
+lt = \x y.neg? (sub x y);
 
-let gt = \x y.pos? (sub x y);
+gt = \x y.pos? (sub x y);
 
-let lte = \x y.not (gt x y);
+lte = \x y.not (gt x y);
 
-let gte = \x y.not (lt x y);
+gte = \x y.not (lt x y);
 
 # The "very slow" algorithm from https://en.wikipedia.org/wiki/Division_algorithm
 # TODO implement something faster
-let divrem = \n d.
+divrem = \n d.
   (neg? d)
     (divrem n (neg d) \q r.pair (neg q) r)
     ((neg? n)
@@ -171,27 +163,30 @@ let divrem = \n d.
         (zero? r)
           (pair (neg q) 0)
           (pair (dec (neg q)) (sub d r)))
-      let posDivrem = \q r.
+      posDivrem = \q r.
         (lt r d)
           (pair q r)
           (posDivrem (inc q) (sub r d));
       (posDivrem 0 n));
 
-let div = \x y.fst (divrem x y);
+div = \x y.fst (divrem x y);
 
-let rem = \x y.snd (divrem x y);
+rem = \x y.snd (divrem x y);
 
-let intToString =
-  let posIntToString = \n s.(divrem n 10) \q r.
-    let s* = (cons (add r '0') s);
+# String ###########################################################################################
+# Encoded as a List of Char (which is to say, a List of Int)
+
+intToString =
+  posIntToString = \n s.(divrem n 10) \q r.
+    s* = (cons (add '0' r) s);
     (zero? q) s* (posIntToString q s*);
   \n.
     (neg? n)
       (cons '-' (posIntToString (neg n) nil))
       (posIntToString n nil);
 
-let stringToInt =
-  let posStringToInt = foldl (\n d.add (mul n 10) (sub d '0')) 0;
+stringToInt =
+  posStringToInt = foldl (\n d.add (mul n 10) (sub d '0')) 0;
   \s.
     (eq '-' (head s))
       (neg (posStringToInt (tail s)))

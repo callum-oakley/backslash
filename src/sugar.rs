@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use crate::{bytes, int, term::Term};
 
 /// A term with named variables and some sugar yet to be encoded as pure lambda calculus terms.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Sugar<'a> {
     Var(&'a str),
     Abs(&'a str, Box<Self>),
@@ -76,11 +76,10 @@ fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
             Token::Backslash => parse_abs(tokens),
             Token::LParen => parse_bracketed(tokens),
             Token::LSquare => parse_list(tokens),
-            Token::Let => parse_let(tokens),
             Token::Exclamation => parse_test(tokens),
             Token::Int(_) => parse_int(tokens),
             Token::String(_) => parse_string(tokens),
-            Token::Identifier(_) => parse_identifier(tokens).map(Sugar::Var),
+            Token::Identifier(_) => parse_var(tokens),
             _ => break,
         }?);
     }
@@ -114,25 +113,32 @@ fn parse_abs<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     Ok(args.iter().rev().fold(body, |body, arg| abs(arg, body)))
 }
 
-fn parse_let<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+fn parse_var<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    let v = parse_identifier(tokens)?;
+    if !is_eof(tokens) && peek(tokens)? == &Token::Eq {
+        parse_let(v, tokens)
+    } else {
+        Ok(Sugar::Var(v))
+    }
+}
+
+fn parse_let<'a>(v: &'a str, tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     lazy_static! {
         static ref FIX: Sugar<'static> = Sugar::parse(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
     }
 
-    consume(&Token::Let, tokens)?;
-    let arg = parse_identifier(tokens)?;
     consume(&Token::Eq, tokens)?;
     let s = parse_term(tokens)?;
     consume(&Token::Semi, tokens)?;
     let t = parse_term(tokens)?;
 
-    Ok(app(abs(arg, t), app(FIX.clone(), abs(arg, s))))
+    Ok(app(abs(v, t), app(FIX.clone(), abs(v, s))))
 }
 
 fn parse_test<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     consume(&Token::Exclamation, tokens)?;
     let lhs = parse_term(tokens)?;
-    consume(&Token::Eq, tokens)?;
+    consume(&Token::Deq, tokens)?;
     let rhs = parse_term(tokens)?;
     consume(&Token::Semi, tokens)?;
     let term = parse_term(tokens)?;
@@ -218,8 +224,8 @@ enum Token<'a> {
     RParen,
     LSquare,
     RSquare,
-    Let,
     Eq,
+    Deq,
     Semi,
     Comma,
     Exclamation,
@@ -237,8 +243,8 @@ impl<'a> Display for Token<'a> {
             Token::RParen => write!(f, ")"),
             Token::LSquare => write!(f, "["),
             Token::RSquare => write!(f, "]"),
-            Token::Let => write!(f, "let"),
             Token::Eq => write!(f, "="),
+            Token::Deq => write!(f, "=="),
             Token::Semi => write!(f, ";"),
             Token::Comma => write!(f, ","),
             Token::Exclamation => write!(f, "!"),
@@ -262,6 +268,16 @@ impl<'a> Tokens<'a> {
     fn punctuation(&mut self, c: u8, token: Token<'a>) -> Result<Token<'a>> {
         self.consume(c)?;
         Ok(token)
+    }
+
+    fn eq(&mut self) -> Result<Token<'a>> {
+        self.consume(b'=')?;
+        if self.peek()? == b'=' {
+            self.consume(b'=')?;
+            Ok(Token::Deq)
+        } else {
+            Ok(Token::Eq)
+        }
     }
 
     fn char(&mut self) -> Result<Token<'a>> {
@@ -294,12 +310,7 @@ impl<'a> Tokens<'a> {
         while !self.is_eof() && !is_reserved(self.peek()?) {
             self.next()?;
         }
-        let s = &self.input[start..self.i];
-        if s == "let" {
-            Ok(Token::Let)
-        } else {
-            Ok(Token::Identifier(s))
-        }
+        Ok(Token::Identifier(&self.input[start..self.i]))
     }
 
     fn char_sequence(&mut self) -> Result<u8> {
@@ -356,7 +367,7 @@ impl<'a> Tokens<'a> {
 
 /// Characters that can't appear in an identifier or an int.
 fn is_reserved(c: u8) -> bool {
-    br#"#\.()[];,'""#.contains(&c) || c.is_ascii_whitespace()
+    br#"#\.()[];,='""#.contains(&c) || c.is_ascii_whitespace()
 }
 
 impl<'a> Iterator for Tokens<'a> {
@@ -374,7 +385,6 @@ impl<'a> Iterator for Tokens<'a> {
         Some(self.peek().and_then(|c| match c {
             b'\\' => self.punctuation(c, Token::Backslash),
             b'.' => self.punctuation(c, Token::Dot),
-            b'=' => self.punctuation(c, Token::Eq),
             b'(' => self.punctuation(c, Token::LParen),
             b')' => self.punctuation(c, Token::RParen),
             b'[' => self.punctuation(c, Token::LSquare),
@@ -382,6 +392,7 @@ impl<'a> Iterator for Tokens<'a> {
             b';' => self.punctuation(c, Token::Semi),
             b',' => self.punctuation(c, Token::Comma),
             b'!' => self.punctuation(c, Token::Exclamation),
+            b'=' => self.eq(),
             b'\'' => self.char(),
             b'"' => self.string(),
             b'-' | b'+' | b'0'..=b'9' => self.int(),
