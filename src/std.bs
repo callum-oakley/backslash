@@ -28,35 +28,6 @@ fst = \pair.pair \a b.a;
 
 snd = \pair.pair \a b.b;
 
-# List #############################################################################################
-
-nil = \ifnil ifcons.ifnil;
-
-cons = \head tail ifnil ifcons.ifcons head tail;
-
-head = \list.list
-  nil
-  \head tail.head;
-
-tail = \list.list
-  nil
-  \head tail.tail;
-
-foldr = \f init list.list
-  init
-  \head tail.f head (foldr f init tail);
-
-foldl = \f init list.list
-  init
-  \head tail.foldl f (f init head) tail;
-
-map = \f.foldr (comp cons f) nil;
-
-rev = foldl (flip cons) nil;
-
-! map head ["back", "slash"] == "bs";
-! rev "rev" == "ver";
-
 # Int ##############################################################################################
 # Balanced ternary as described in:
 # Mogensen, T.Æ. (2001). An Investigation of Compact and Efficient Number Representations in the
@@ -172,6 +143,35 @@ divrem = \n d.
 div = \x y.fst (divrem x y);
 
 rem = \x y.snd (divrem x y);
+
+# List #############################################################################################
+# Scott encoded
+
+nil = \ifnil ifcons.ifnil;
+
+cons = \head tail ifnil ifcons.ifcons head tail;
+
+head = \list.list
+  nil
+  \head tail.head;
+
+tail = \list.list
+  nil
+  \head tail.tail;
+
+foldr = \f init list.list
+  init
+  \head tail.f head (foldr f init tail);
+
+foldl = \f init list.list
+  init
+  \head tail.foldl f (f init head) tail;
+
+map = \f.foldr (comp cons f) nil;
+
+rev = foldl (flip cons) nil;
+
+foldComp = foldr comp id;
 
 # String ###########################################################################################
 # Encoded as a List of Char (which is to say, a List of Int)
