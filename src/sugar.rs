@@ -16,7 +16,7 @@ pub enum Sugar<'a> {
     App(Box<Self>, Box<Self>),
     Int(i64),
     String(String),
-    Test(Box<Self>, Box<Self>, Box<Self>),
+    Test(Box<Self>, Box<Self>),
 }
 
 impl<'a> Sugar<'a> {
@@ -48,7 +48,7 @@ impl<'a> Sugar<'a> {
                 Sugar::App(s, t) => Ok(Term::app(with_scope(scope, s)?, with_scope(scope, t)?)),
                 Sugar::Int(n) => Ok(int::encode(*n)),
                 Sugar::String(s) => Ok(bytes::encode(s.as_bytes())),
-                Sugar::Test(_, _, term) => Ok(with_scope(scope, term)?),
+                Sugar::Test(_, term) => Ok(with_scope(scope, term)?),
             }
         }
 
@@ -64,8 +64,8 @@ fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
     Sugar::App(Box::new(s), Box::new(t))
 }
 
-fn test<'a>(lhs: Sugar<'a>, rhs: Sugar<'a>, term: Sugar<'a>) -> Sugar<'a> {
-    Sugar::Test(Box::new(lhs), Box::new(rhs), Box::new(term))
+fn test<'a>(t: Sugar<'a>, term: Sugar<'a>) -> Sugar<'a> {
+    Sugar::Test(Box::new(t), Box::new(term))
 }
 
 fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
@@ -137,12 +137,10 @@ fn parse_let<'a>(v: &'a str, tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<
 
 fn parse_test<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     consume(&Token::Exclamation, tokens)?;
-    let lhs = parse_term(tokens)?;
-    consume(&Token::Deq, tokens)?;
-    let rhs = parse_term(tokens)?;
+    let t = parse_term(tokens)?;
     consume(&Token::Semi, tokens)?;
     let term = parse_term(tokens)?;
-    Ok(test(lhs, rhs, term))
+    Ok(test(t, term))
 }
 
 fn parse_int<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
@@ -225,7 +223,6 @@ enum Token<'a> {
     LSquare,
     RSquare,
     Eq,
-    Deq,
     Semi,
     Comma,
     Exclamation,
@@ -244,7 +241,6 @@ impl<'a> Display for Token<'a> {
             Token::LSquare => write!(f, "["),
             Token::RSquare => write!(f, "]"),
             Token::Eq => write!(f, "="),
-            Token::Deq => write!(f, "=="),
             Token::Semi => write!(f, ";"),
             Token::Comma => write!(f, ","),
             Token::Exclamation => write!(f, "!"),
@@ -268,16 +264,6 @@ impl<'a> Tokens<'a> {
     fn punctuation(&mut self, c: u8, token: Token<'a>) -> Result<Token<'a>> {
         self.consume(c)?;
         Ok(token)
-    }
-
-    fn eq(&mut self) -> Result<Token<'a>> {
-        self.consume(b'=')?;
-        if self.peek()? == b'=' {
-            self.consume(b'=')?;
-            Ok(Token::Deq)
-        } else {
-            Ok(Token::Eq)
-        }
     }
 
     fn char(&mut self) -> Result<Token<'a>> {
@@ -389,10 +375,10 @@ impl<'a> Iterator for Tokens<'a> {
             b')' => self.punctuation(c, Token::RParen),
             b'[' => self.punctuation(c, Token::LSquare),
             b']' => self.punctuation(c, Token::RSquare),
+            b'=' => self.punctuation(c, Token::Eq),
             b';' => self.punctuation(c, Token::Semi),
             b',' => self.punctuation(c, Token::Comma),
             b'!' => self.punctuation(c, Token::Exclamation),
-            b'=' => self.eq(),
             b'\'' => self.char(),
             b'"' => self.string(),
             b'-' | b'0'..=b'9' => self.int(),

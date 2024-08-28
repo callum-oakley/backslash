@@ -28,3 +28,13 @@ pub fn run(term: &str, input: &[u8]) -> Result<Vec<u8>> {
 pub fn run_tests(term: &str) -> Result<()> {
     test::run(Sugar::parse(&format!("{STD}\n{term}"))?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn std() -> Result<()> {
+        run_tests("id")
+    }
+}
