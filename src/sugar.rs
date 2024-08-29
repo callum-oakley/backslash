@@ -54,7 +54,7 @@ impl<'a> Sugar<'a> {
                     if let Some((i, _)) = scope.iter().rev().enumerate().find(|&(_, v)| x == v) {
                         Ok(Term::Var(i))
                     } else {
-                        bail!(OffsetError::new(*offset, anyhow!("unbound variable {x}"),));
+                        bail!(OffsetError::new(*offset, anyhow!("unbound variable '{x}'"),));
                     }
                 }
                 Sugar::Abs(arg, body, _) => {
@@ -455,7 +455,7 @@ impl<'a> Tokens<'a> {
             bail!(OffsetError::new(
                 offset,
                 anyhow!(
-                    "expected {} but got {}",
+                    "expected '{}' but got '{}'",
                     char::from(expected),
                     char::from(c),
                 ),
