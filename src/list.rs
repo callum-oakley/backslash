@@ -14,9 +14,9 @@ pub fn decode(mut term: Term) -> Result<Vec<Term>> {
     let mut terms = Vec::new();
     while term != new_nil() {
         term = term.try_unabs()?.try_unabs()?;
-        let (ifcons_head, tail) = term.try_unapp()?;
-        let (ifcons, head) = ifcons_head.try_unapp()?;
-        ensure!(ifcons == Term::Var(0), "not a cons");
+        let (var0_head, tail) = term.try_unapp()?;
+        let (var0, head) = var0_head.try_unapp()?;
+        ensure!(var0 == Term::Var(0), "not a cons");
         terms.push(head);
         term = tail;
     }

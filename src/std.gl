@@ -1,8 +1,8 @@
 # Bool #############################################################################################
 
-true = \iftrue iffalse.iftrue;
+true = \ifTrue ifFalse.ifTrue;
 
-false = \iftrue iffalse.iffalse;
+false = \ifTrue ifFalse.ifFalse;
 
 not = \a.a false true;
 
@@ -22,7 +22,7 @@ fix = \f.(\x.f (x x)) (\x.f (x x));
 
 # Pair #############################################################################################
 
-pair = \a b ifpair.ifpair a b;
+pair = \a b ifPair.ifPair a b;
 
 fst = \pair.pair \a b.a;
 
@@ -126,23 +126,23 @@ gte = \x y.not (lt x y);
 
 # The "very slow" algorithm from https://en.wikipedia.org/wiki/Division_algorithm
 # TODO implement something faster
-divrem = \n d.
+divRem = \n d.
   (neg? d)
-    (divrem n (neg d) \q r.pair (neg q) r)
+    (divRem n (neg d) \q r.pair (neg q) r)
     ((neg? n)
-      (divrem (neg n) d \q r.
+      (divRem (neg n) d \q r.
         (zero? r)
           (pair (neg q) 0)
           (pair (dec (neg q)) (sub d r)))
-      posDivrem = \q r.
+      posDivRem = \q r.
         (lt r d)
           (pair q r)
-          (posDivrem (inc q) (sub r d));
-      (posDivrem 0 n));
+          (posDivRem (inc q) (sub r d));
+      (posDivRem 0 n));
 
-div = \x y.fst (divrem x y);
+div = \x y.fst (divRem x y);
 
-rem = \x y.snd (divrem x y);
+rem = \x y.snd (divRem x y);
 
 ! eq (add 2 3) 5;
 ! eq (sub 2 3) -1;
@@ -153,9 +153,9 @@ rem = \x y.snd (divrem x y);
 # List #############################################################################################
 # Scott encoded
 
-nil = \ifnil ifcons.ifnil;
+nil = \ifNil ifCons.ifNil;
 
-cons = \head tail ifnil ifcons.ifcons head tail;
+cons = \head tail ifNil ifCons.ifCons head tail;
 
 listEq = \a b.a
   (b
@@ -194,7 +194,7 @@ foldComp = foldr comp id;
 # Encoded as a List of Char (which is to say, a List of Int)
 
 intToString =
-  posIntToString = \n s.(divrem n 10) \q r.
+  posIntToString = \n s.(divRem n 10) \q r.
     s* = (cons (add '0' r) s);
     (zero? q) s* (posIntToString q s*);
   \n.

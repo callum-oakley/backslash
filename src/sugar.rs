@@ -242,8 +242,8 @@ fn parse_identifier<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<(&'a str, u
 
 fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>, offset: usize) -> Sugar<'a> {
     lazy_static! {
-        static ref NIL: Sugar<'static> = Sugar::parse(r"\ifnil ifcons.ifnil").unwrap();
-        static ref CONS: Sugar<'static> = Sugar::parse(r"\a b ifnil ifcons.ifcons a b").unwrap();
+        static ref NIL: Sugar<'static> = Sugar::parse(r"\ifNil ifCons.ifNil").unwrap();
+        static ref CONS: Sugar<'static> = Sugar::parse(r"\a b ifNil ifCons.ifCons a b").unwrap();
     }
     if let Some(term) = terms.next() {
         app(
