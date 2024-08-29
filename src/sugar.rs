@@ -3,20 +3,37 @@ use std::{
     iter::Peekable,
 };
 
-use anyhow::{anyhow, bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use lazy_static::lazy_static;
+use thiserror::Error;
 
 use crate::{bytes, int, term::Term};
+
+#[derive(Error, Debug)]
+#[error("{source}")]
+pub struct OffsetError {
+    pub offset: usize,
+    pub source: Error,
+}
+
+impl OffsetError {
+    pub fn new<E: Into<Error>>(offset: usize, source: E) -> Self {
+        Self {
+            offset,
+            source: source.into(),
+        }
+    }
+}
 
 /// A term with named variables and some sugar yet to be encoded as pure lambda calculus terms.
 #[derive(Clone, Debug)]
 pub enum Sugar<'a> {
-    Var(&'a str),
-    Abs(&'a str, Box<Self>),
-    App(Box<Self>, Box<Self>),
-    Int(i64),
-    String(String),
-    Test(Box<Self>, Box<Self>),
+    Var(&'a str, usize),
+    Abs(&'a str, Box<Self>, usize),
+    App(Box<Self>, Box<Self>, usize),
+    Int(i64, usize),
+    String(String, usize),
+    Test(Box<Self>, Box<Self>, usize),
 }
 
 impl<'a> Sugar<'a> {
@@ -24,7 +41,8 @@ impl<'a> Sugar<'a> {
         let mut tokens = Tokens::new(input).peekable();
         let term = parse_term(&mut tokens)?;
         if !is_eof(&mut tokens) {
-            bail!("parser: unexpected '{}'", peek(&mut tokens)?);
+            let token = peek(&mut tokens)?;
+            bail!(unexpected_token(token));
         }
         Ok(term)
     }
@@ -32,162 +50,210 @@ impl<'a> Sugar<'a> {
     pub fn desugar(&self) -> Result<Term> {
         fn with_scope<'a>(scope: &mut Vec<&'a str>, term: &'a Sugar) -> Result<Term> {
             match term {
-                Sugar::Var(x) => {
+                Sugar::Var(x, offset) => {
                     if let Some((i, _)) = scope.iter().rev().enumerate().find(|&(_, v)| x == v) {
                         Ok(Term::Var(i))
                     } else {
-                        bail!("parser: unbound variable {x}");
+                        bail!(OffsetError::new(
+                            *offset,
+                            anyhow!("parser: unbound variable {x}"),
+                        ));
                     }
                 }
-                Sugar::Abs(arg, body) => {
+                Sugar::Abs(arg, body, _) => {
                     scope.push(arg);
                     let res = Term::abs(with_scope(scope, body)?);
                     scope.pop();
                     Ok(res)
                 }
-                Sugar::App(s, t) => Ok(Term::app(with_scope(scope, s)?, with_scope(scope, t)?)),
-                Sugar::Int(n) => Ok(int::encode(*n)),
-                Sugar::String(s) => Ok(bytes::encode(s.as_bytes())),
-                Sugar::Test(_, term) => Ok(with_scope(scope, term)?),
+                Sugar::App(s, t, _) => Ok(Term::app(with_scope(scope, s)?, with_scope(scope, t)?)),
+                Sugar::Int(n, _) => Ok(int::encode(*n)),
+                Sugar::String(s, _) => Ok(bytes::encode(s.as_bytes())),
+                Sugar::Test(_, term, _) => Ok(with_scope(scope, term)?),
             }
         }
 
         with_scope(&mut Vec::new(), self)
     }
+
+    fn offset(&self) -> usize {
+        match self {
+            Sugar::Var(_, offset)
+            | Sugar::Abs(_, _, offset)
+            | Sugar::App(_, _, offset)
+            | Sugar::Int(_, offset)
+            | Sugar::String(_, offset)
+            | Sugar::Test(_, _, offset) => *offset,
+        }
+    }
 }
 
-fn abs<'a>(arg: &'a str, body: Sugar<'a>) -> Sugar<'a> {
-    Sugar::Abs(arg, Box::new(body))
+fn abs<'a>(arg: &'a str, body: Sugar<'a>, offset: usize) -> Sugar<'a> {
+    Sugar::Abs(arg, Box::new(body), offset)
 }
 
-fn app<'a>(s: Sugar<'a>, t: Sugar<'a>) -> Sugar<'a> {
-    Sugar::App(Box::new(s), Box::new(t))
+fn app<'a>(s: Sugar<'a>, t: Sugar<'a>, offset: usize) -> Sugar<'a> {
+    Sugar::App(Box::new(s), Box::new(t), offset)
 }
 
-fn test<'a>(t: Sugar<'a>, term: Sugar<'a>) -> Sugar<'a> {
-    Sugar::Test(Box::new(t), Box::new(term))
+fn test<'a>(t: Sugar<'a>, term: Sugar<'a>, offset: usize) -> Sugar<'a> {
+    Sugar::Test(Box::new(t), Box::new(term), offset)
 }
 
 fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+    let offset = peek(tokens)?.offset();
     let mut terms = Vec::new();
     while !is_eof(tokens) {
         let token = peek(tokens)?;
         terms.push(match token {
-            Token::Backslash => parse_abs(tokens),
-            Token::LParen => parse_bracketed(tokens),
-            Token::LSquare => parse_list(tokens),
-            Token::Exclamation => parse_test(tokens),
-            Token::Int(_) => parse_int(tokens),
-            Token::String(_) => parse_string(tokens),
-            Token::Identifier(_) => parse_var(tokens),
-            _ => break,
+            Token::Punctuation(Punctuation::Backslash, _) => parse_abs(tokens),
+            Token::Punctuation(Punctuation::LParen, _) => parse_bracketed(tokens),
+            Token::Punctuation(Punctuation::LSquare, _) => parse_list(tokens),
+            Token::Punctuation(Punctuation::Exclamation, _) => parse_test(tokens),
+            Token::Int(..) => parse_int(tokens),
+            Token::String(..) => parse_string(tokens),
+            Token::Identifier(..) => parse_var(tokens),
+            Token::Punctuation(
+                Punctuation::Dot
+                | Punctuation::RParen
+                | Punctuation::RSquare
+                | Punctuation::Eq
+                | Punctuation::Semi
+                | Punctuation::Comma,
+                _,
+            ) => break,
         }?);
     }
 
     match terms.len() {
-        0 => bail!("parser: empty term"),
+        0 => bail!(OffsetError::new(offset, anyhow!("parser: empty term"))),
         1 => Ok(terms.remove(0)),
         _ => {
             let term = terms.remove(0);
-            Ok(terms.into_iter().fold(term, app))
+            Ok(terms.into_iter().fold(term, |s, t| {
+                let offset = s.offset();
+                app(s, t, offset)
+            }))
         }
     }
 }
 
 fn parse_bracketed<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    consume(&Token::LParen, tokens)?;
+    consume(Punctuation::LParen, tokens)?;
     let res = parse_term(tokens);
-    consume(&Token::RParen, tokens)?;
+    consume(Punctuation::RParen, tokens)?;
     res
 }
 
 fn parse_abs<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    consume(&Token::Backslash, tokens)?;
+    let offset = peek(tokens)?.offset();
+    consume(Punctuation::Backslash, tokens)?;
     let mut args = Vec::new();
-    while peek(tokens)? != &Token::Dot {
-        args.push(parse_identifier(tokens)?);
+    while !matches!(peek(tokens)?, Token::Punctuation(Punctuation::Dot, _)) {
+        args.push(parse_identifier(tokens)?.0);
     }
-    consume(&Token::Dot, tokens)?;
+    consume(Punctuation::Dot, tokens)?;
     let body = parse_term(tokens)?;
 
-    Ok(args.iter().rev().fold(body, |body, arg| abs(arg, body)))
+    Ok(args
+        .iter()
+        .rev()
+        .fold(body, |body, arg| abs(arg, body, offset)))
 }
 
 fn parse_var<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    let v = parse_identifier(tokens)?;
-    if !is_eof(tokens) && peek(tokens)? == &Token::Eq {
-        parse_let(v, tokens)
+    let (v, offset) = parse_identifier(tokens)?;
+    if !is_eof(tokens) && matches!(peek(tokens)?, Token::Punctuation(Punctuation::Eq, _)) {
+        parse_let(v, offset, tokens)
     } else {
-        Ok(Sugar::Var(v))
+        Ok(Sugar::Var(v, offset))
     }
 }
 
-fn parse_let<'a>(v: &'a str, tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
+fn parse_let<'a>(
+    v: &'a str,
+    offset: usize,
+    tokens: &mut Peekable<Tokens<'a>>,
+) -> Result<Sugar<'a>> {
     lazy_static! {
         static ref FIX: Sugar<'static> = Sugar::parse(r"\f.(\x.f (x x)) (\x.f (x x))").unwrap();
     }
 
-    consume(&Token::Eq, tokens)?;
+    consume(Punctuation::Eq, tokens)?;
     let s = parse_term(tokens)?;
-    consume(&Token::Semi, tokens)?;
+    consume(Punctuation::Semi, tokens)?;
     let t = parse_term(tokens)?;
 
-    Ok(app(abs(v, t), app(FIX.clone(), abs(v, s))))
+    Ok(app(
+        abs(v, t, offset),
+        app(FIX.clone(), abs(v, s, offset), offset),
+        offset,
+    ))
 }
 
 fn parse_test<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    consume(&Token::Exclamation, tokens)?;
+    let offset = peek(tokens)?.offset();
+    consume(Punctuation::Exclamation, tokens)?;
     let t = parse_term(tokens)?;
-    consume(&Token::Semi, tokens)?;
+    consume(Punctuation::Semi, tokens)?;
     let term = parse_term(tokens)?;
-    Ok(test(t, term))
+    Ok(test(t, term, offset))
 }
 
 fn parse_int<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    match next(tokens)? {
-        Token::Int(n) => Ok(Sugar::Int(n)),
-        token => bail!("parser: unexpected '{token}'"),
+    let token = next(tokens)?;
+    match token {
+        Token::Int(n, offset) => Ok(Sugar::Int(n, offset)),
+        _ => bail!(unexpected_token(&token)),
     }
 }
 
 fn parse_string<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    match next(tokens)? {
-        Token::String(s) => Ok(Sugar::String(s)),
-        token => bail!("parser: unexpected '{token}'"),
+    let token = next(tokens)?;
+    match token {
+        Token::String(s, offset) => Ok(Sugar::String(s, offset)),
+        _ => bail!(unexpected_token(&token)),
     }
 }
 
 fn parse_list<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
-    consume(&Token::LSquare, tokens)?;
+    let offset = peek(tokens)?.offset();
+    consume(Punctuation::LSquare, tokens)?;
 
     let mut terms = Vec::new();
     loop {
         terms.push(parse_term(tokens)?);
 
-        match next(tokens)? {
-            Token::Comma => (),
-            Token::RSquare => break,
-            token => bail!("unexpected '{token}'"),
+        let token = next(tokens)?;
+        match token {
+            Token::Punctuation(Punctuation::Comma, _) => (),
+            Token::Punctuation(Punctuation::RSquare, _) => break,
+            _ => bail!(unexpected_token(&token)),
         }
     }
 
-    Ok(encode_list(terms.into_iter()))
+    Ok(encode_list(terms.into_iter(), offset))
 }
 
-fn parse_identifier<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<&'a str> {
-    match next(tokens)? {
-        Token::Identifier(i) => Ok(i),
-        token => bail!("parser: unexpected '{token}'"),
+fn parse_identifier<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<(&'a str, usize)> {
+    let token = next(tokens)?;
+    match token {
+        Token::Identifier(i, offset) => Ok((i, offset)),
+        _ => bail!(unexpected_token(&token)),
     }
 }
 
-fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>) -> Sugar<'a> {
+fn encode_list<'a>(mut terms: impl Iterator<Item = Sugar<'a>>, offset: usize) -> Sugar<'a> {
     lazy_static! {
         static ref NIL: Sugar<'static> = Sugar::parse(r"\ifnil ifcons.ifnil").unwrap();
         static ref CONS: Sugar<'static> = Sugar::parse(r"\a b ifnil ifcons.ifcons a b").unwrap();
     }
     if let Some(term) = terms.next() {
-        app(app(CONS.clone(), term), encode_list(terms))
+        app(
+            app(CONS.clone(), term, offset),
+            encode_list(terms, offset),
+            offset,
+        )
     } else {
         NIL.clone()
     }
@@ -198,24 +264,40 @@ fn is_eof(tokens: &mut Peekable<Tokens>) -> bool {
 }
 
 fn peek<'a, 'b>(tokens: &'b mut Peekable<Tokens<'a>>) -> Result<&'b Token<'a>> {
-    tokens
-        .peek()
-        .context("parser: EOF")
-        .and_then(|r| r.as_ref().map_err(|err| anyhow!("{err}")))
+    match tokens.peek() {
+        Some(token) => token
+            .as_ref()
+            // We need to return an owned error but peeking only gives us a reference so flatten the
+            // error in to a new anyhow::Error while taking care to properly forward OffsetError.
+            .map_err(|err| match err.downcast_ref::<OffsetError>() {
+                Some(err) => anyhow!(OffsetError::new(err.offset, anyhow!("{}", err.source))),
+                None => anyhow!("{err}"),
+            }),
+        None => bail!("parser: EOF"),
+    }
 }
 
 fn next<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Token<'a>> {
-    tokens.next().context("parser: EOF")?
+    match tokens.next() {
+        Some(token) => token,
+        None => bail!("parser: EOF"),
+    }
 }
 
-fn consume(expected: &Token, tokens: &mut Peekable<Tokens>) -> Result<()> {
+fn consume(expected: Punctuation, tokens: &mut Peekable<Tokens>) -> Result<()> {
     let token = next(tokens)?;
-    ensure!(&token == expected, "parser: unexpected '{token}'");
-    Ok(())
+    match token {
+        Token::Punctuation(p, _) if p == expected => Ok(()),
+        _ => bail!(unexpected_token(&token)),
+    }
 }
 
-#[derive(PartialEq)]
-enum Token<'a> {
+fn unexpected_token(token: &Token) -> OffsetError {
+    OffsetError::new(token.offset(), anyhow!("parser: unexpected '{token}'"))
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Punctuation {
     Backslash,
     Dot,
     LParen,
@@ -226,77 +308,103 @@ enum Token<'a> {
     Semi,
     Comma,
     Exclamation,
-    Int(i64),
-    String(String),
-    Identifier(&'a str),
+}
+
+enum Token<'a> {
+    Punctuation(Punctuation, usize),
+    Int(i64, usize),
+    String(String, usize),
+    Identifier(&'a str, usize),
+}
+
+impl<'a> Token<'a> {
+    fn offset(&self) -> usize {
+        match self {
+            Token::Punctuation(_, offset)
+            | Token::Int(_, offset)
+            | Token::String(_, offset)
+            | Token::Identifier(_, offset) => *offset,
+        }
+    }
 }
 
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Backslash => write!(f, "\\"),
-            Token::Dot => write!(f, "."),
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
-            Token::LSquare => write!(f, "["),
-            Token::RSquare => write!(f, "]"),
-            Token::Eq => write!(f, "="),
-            Token::Semi => write!(f, ";"),
-            Token::Comma => write!(f, ","),
-            Token::Exclamation => write!(f, "!"),
-            Token::Int(n) => write!(f, "{n}"),
-            Token::String(s) => write!(f, "{s}"),
-            Token::Identifier(i) => write!(f, "{i}"),
+            Token::Punctuation(Punctuation::Backslash, _) => write!(f, "\\"),
+            Token::Punctuation(Punctuation::Dot, _) => write!(f, "."),
+            Token::Punctuation(Punctuation::LParen, _) => write!(f, "("),
+            Token::Punctuation(Punctuation::RParen, _) => write!(f, ")"),
+            Token::Punctuation(Punctuation::LSquare, _) => write!(f, "["),
+            Token::Punctuation(Punctuation::RSquare, _) => write!(f, "]"),
+            Token::Punctuation(Punctuation::Eq, _) => write!(f, "="),
+            Token::Punctuation(Punctuation::Semi, _) => write!(f, ";"),
+            Token::Punctuation(Punctuation::Comma, _) => write!(f, ","),
+            Token::Punctuation(Punctuation::Exclamation, _) => write!(f, "!"),
+            Token::Int(n, _) => write!(f, "{n}"),
+            Token::String(s, _) => write!(f, "{s}"),
+            Token::Identifier(i, _) => write!(f, "{i}"),
         }
     }
 }
 
 struct Tokens<'a> {
     input: &'a str,
-    i: usize,
+    offset: usize,
 }
 
 impl<'a> Tokens<'a> {
     fn new(input: &'a str) -> Self {
-        Tokens { input, i: 0 }
+        Tokens { input, offset: 0 }
     }
 
-    fn punctuation(&mut self, c: u8, token: Token<'a>) -> Result<Token<'a>> {
+    fn punctuation(&mut self, c: u8, punctuation: Punctuation) -> Result<Token<'a>> {
+        let offset = self.offset;
         self.consume(c)?;
-        Ok(token)
+        Ok(Token::Punctuation(punctuation, offset))
     }
 
     fn char(&mut self) -> Result<Token<'a>> {
+        let offset = self.offset;
         self.consume(b'\'')?;
         let c = self.char_sequence()?;
         self.consume(b'\'')?;
-        Ok(Token::Int(c.into()))
+        Ok(Token::Int(c.into(), offset))
     }
 
     fn string(&mut self) -> Result<Token<'a>> {
+        let offset = self.offset;
         self.consume(b'"')?;
         let mut s = Vec::new();
         while self.peek()? != b'"' {
             s.push(self.char_sequence()?);
         }
         self.consume(b'"')?;
-        Ok(Token::String(String::from_utf8(s)?))
+        Ok(Token::String(
+            String::from_utf8(s).map_err(|err| OffsetError::new(offset, err))?,
+            offset,
+        ))
     }
 
     fn int(&mut self) -> Result<Token<'a>> {
-        let start = self.i;
+        let offset = self.offset;
         while !self.is_eof() && !is_reserved(self.peek()?) {
             self.next()?;
         }
-        Ok(Token::Int(self.input[start..self.i].parse()?))
+        Ok(Token::Int(
+            self.input[offset..self.offset]
+                .parse()
+                .map_err(|err| OffsetError::new(offset, err))?,
+            offset,
+        ))
     }
 
     fn identifier(&mut self) -> Result<Token<'a>> {
-        let start = self.i;
+        let offset = self.offset;
         while !self.is_eof() && !is_reserved(self.peek()?) {
             self.next()?;
         }
-        Ok(Token::Identifier(&self.input[start..self.i]))
+        Ok(Token::Identifier(&self.input[offset..self.offset], offset))
     }
 
     fn char_sequence(&mut self) -> Result<u8> {
@@ -327,26 +435,35 @@ impl<'a> Tokens<'a> {
     }
 
     fn is_eof(&self) -> bool {
-        self.input.as_bytes().get(self.i).is_none()
+        self.input.as_bytes().get(self.offset).is_none()
     }
 
     fn peek(&self) -> Result<u8> {
-        self.input
-            .as_bytes()
-            .get(self.i)
-            .copied()
-            .context("parser: EOF")
+        match self.input.as_bytes().get(self.offset).copied() {
+            Some(c) => Ok(c),
+            None => bail!("parser: EOF"),
+        }
     }
 
     fn next(&mut self) -> Result<u8> {
         let c = self.peek()?;
-        self.i += 1;
+        self.offset += 1;
         Ok(c)
     }
 
     fn consume(&mut self, expected: u8) -> Result<()> {
+        let offset = self.offset;
         let c = self.next()?;
-        ensure!(c == expected, "parser: expected {expected} but got {c}");
+        if c != expected {
+            bail!(OffsetError::new(
+                offset,
+                anyhow!(
+                    "expected {} but got {}",
+                    char::from(expected),
+                    char::from(c),
+                ),
+            ));
+        };
         Ok(())
     }
 }
@@ -359,7 +476,7 @@ fn is_reserved(c: u8) -> bool {
 impl<'a> Iterator for Tokens<'a> {
     type Item = Result<Token<'a>>;
 
-    fn next(&mut self) -> Option<Result<Token<'a>>> {
+    fn next(&mut self) -> Option<Self::Item> {
         if let Err(err) = self.consume_whitespace() {
             return Some(Err(err));
         }
@@ -368,21 +485,22 @@ impl<'a> Iterator for Tokens<'a> {
             return None;
         }
 
-        Some(self.peek().and_then(|c| match c {
-            b'\\' => self.punctuation(c, Token::Backslash),
-            b'.' => self.punctuation(c, Token::Dot),
-            b'(' => self.punctuation(c, Token::LParen),
-            b')' => self.punctuation(c, Token::RParen),
-            b'[' => self.punctuation(c, Token::LSquare),
-            b']' => self.punctuation(c, Token::RSquare),
-            b'=' => self.punctuation(c, Token::Eq),
-            b';' => self.punctuation(c, Token::Semi),
-            b',' => self.punctuation(c, Token::Comma),
-            b'!' => self.punctuation(c, Token::Exclamation),
+        let token = self.peek().and_then(|c| match c {
+            b'\\' => self.punctuation(c, Punctuation::Backslash),
+            b'.' => self.punctuation(c, Punctuation::Dot),
+            b'(' => self.punctuation(c, Punctuation::LParen),
+            b')' => self.punctuation(c, Punctuation::RParen),
+            b'[' => self.punctuation(c, Punctuation::LSquare),
+            b']' => self.punctuation(c, Punctuation::RSquare),
+            b'=' => self.punctuation(c, Punctuation::Eq),
+            b';' => self.punctuation(c, Punctuation::Semi),
+            b',' => self.punctuation(c, Punctuation::Comma),
+            b'!' => self.punctuation(c, Punctuation::Exclamation),
             b'\'' => self.char(),
             b'"' => self.string(),
             b'-' | b'0'..=b'9' => self.int(),
             _ => self.identifier(),
-        }))
+        });
+        Some(token)
     }
 }

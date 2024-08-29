@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::{int, list, term::Term};
 
@@ -7,8 +7,13 @@ pub fn encode(bytes: &[u8]) -> Term {
 }
 
 pub fn decode(term: Term) -> Result<Vec<u8>> {
-    list::decode(term)?
+    list::decode(term)
+        .context("not a list")?
         .into_iter()
-        .map(|term| int::decode(term).and_then(|n| u8::try_from(n).map_err(Into::into)))
+        .map(|term| {
+            int::decode(term)
+                .context("not an int")
+                .and_then(|n| u8::try_from(n).map_err(Into::into))
+        })
         .collect()
 }

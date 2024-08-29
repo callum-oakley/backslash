@@ -16,7 +16,7 @@ pub fn decode(mut term: Term) -> Result<Vec<Term>> {
         term = term.try_unabs()?.try_unabs()?;
         let (ifcons_head, tail) = term.try_unapp()?;
         let (ifcons, head) = ifcons_head.try_unapp()?;
-        ensure!(ifcons == Term::Var(0), "not a list");
+        ensure!(ifcons == Term::Var(0), "not a cons");
         terms.push(head);
         term = tail;
     }
