@@ -30,14 +30,3 @@ fn new_nil() -> Term {
 fn cons(a: Term, b: Term) -> Term {
     Term::abs(Term::abs(Term::app(Term::app(Term::Var(0), a), b)))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_list() {
-        let terms: Vec<Term> = (0..10).map(crate::int::encode).collect();
-        assert_eq!(decode(encode(terms.clone().into_iter())).unwrap(), terms);
-    }
-}

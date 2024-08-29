@@ -12,10 +12,10 @@ mod sugar;
 mod term;
 mod test;
 
-static STD: &str = include_str!("std.bs");
+static STD: &str = include_str!("std.gl");
 
 pub fn run(mut files: Vec<(&str, &str)>, input: &[u8]) -> Result<Vec<u8>> {
-    files.insert(0, ("src/std.bs", STD));
+    files.insert(0, ("src/std.gl", STD));
     let mut term = String::new();
     for (_, file) in &files {
         term.push_str(file);
@@ -27,7 +27,7 @@ pub fn run(mut files: Vec<(&str, &str)>, input: &[u8]) -> Result<Vec<u8>> {
 }
 
 pub fn run_tests(mut files: Vec<(&str, &str)>) -> Result<()> {
-    files.insert(0, ("src/std.bs", STD));
+    files.insert(0, ("src/std.gl", STD));
     let mut term = String::new();
     for (_, file) in &files {
         term.push_str(file);

@@ -5,13 +5,13 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use bs::run;
+use gali::run;
 
 fn main() -> Result<()> {
     // TODO flag to run tests
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        bail!("Usage: bs FILES");
+        bail!("Usage: gali FILES");
     }
 
     let mut file_contents = Vec::new();

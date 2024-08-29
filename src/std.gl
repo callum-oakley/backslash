@@ -202,8 +202,6 @@ intToString =
       (cons '-' (posIntToString (neg n) nil))
       (posIntToString n nil);
 
-! listEq (intToString 42) "42";
-
 stringToInt =
   posStringToInt = foldl (\n d.add (mul n 10) (sub d '0')) 0;
   \s.
@@ -211,4 +209,5 @@ stringToInt =
       (neg (posStringToInt (tail s)))
       (posStringToInt s);
 
+! listEq (intToString 42) "42";
 ! eq (stringToInt "42") 42;
