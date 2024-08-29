@@ -2,6 +2,8 @@
 name = "gali"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "An implementation of the untyped lambda caluculus, with some sugar for convenience."
 
 [dependencies]
 anyhow = "1.0.86"
