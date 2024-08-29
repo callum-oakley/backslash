@@ -26,7 +26,7 @@ pub fn run(mut files: Vec<(&str, &str)>, input: &[u8]) -> Result<Vec<u8>> {
         .map_err(|err| offset_to_file_line_col(&files, err))
 }
 
-pub fn run_tests(mut files: Vec<(&str, &str)>) -> Result<()> {
+pub fn run_tests(mut files: Vec<(&str, &str)>) -> Result<usize> {
     files.insert(0, ("src/std.gl", STD));
     let mut term = String::new();
     for (_, file) in &files {
@@ -71,6 +71,7 @@ mod tests {
 
     #[test]
     fn std() -> Result<()> {
-        run_tests(vec![("TEST", "id")])
+        run_tests(vec![("TEST", "id")])?;
+        Ok(())
     }
 }

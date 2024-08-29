@@ -8,17 +8,18 @@ use crate::{
     term::Term,
 };
 
-pub fn run(sugar: Sugar) -> Result<()> {
+pub fn run(sugar: Sugar) -> Result<usize> {
     lazy_static! {
         static ref TRUE: Term = Term::abs(Term::abs(Term::Var(1)));
     }
     let tests = collect_tests(sugar)?;
+    let test_count = tests.len();
     for (test, offset) in tests {
         if test.reduce() != TRUE.clone() {
             bail!(OffsetError::new(offset, anyhow!("test failure")));
         }
     }
-    Ok(())
+    Ok(test_count)
 }
 
 fn collect_tests(mut sugar: Sugar) -> Result<Vec<(Term, usize)>> {

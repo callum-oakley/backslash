@@ -54,10 +54,7 @@ impl<'a> Sugar<'a> {
                     if let Some((i, _)) = scope.iter().rev().enumerate().find(|&(_, v)| x == v) {
                         Ok(Term::Var(i))
                     } else {
-                        bail!(OffsetError::new(
-                            *offset,
-                            anyhow!("parser: unbound variable {x}"),
-                        ));
+                        bail!(OffsetError::new(*offset, anyhow!("unbound variable {x}"),));
                     }
                 }
                 Sugar::Abs(arg, body, _) => {
@@ -126,7 +123,7 @@ fn parse_term<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Sugar<'a>> {
     }
 
     match terms.len() {
-        0 => bail!(OffsetError::new(offset, anyhow!("parser: empty term"))),
+        0 => bail!(OffsetError::new(offset, anyhow!("empty term"))),
         1 => Ok(terms.remove(0)),
         _ => {
             let term = terms.remove(0);
@@ -273,14 +270,14 @@ fn peek<'a, 'b>(tokens: &'b mut Peekable<Tokens<'a>>) -> Result<&'b Token<'a>> {
                 Some(err) => anyhow!(OffsetError::new(err.offset, anyhow!("{}", err.source))),
                 None => anyhow!("{err}"),
             }),
-        None => bail!("parser: EOF"),
+        None => bail!("EOF"),
     }
 }
 
 fn next<'a>(tokens: &mut Peekable<Tokens<'a>>) -> Result<Token<'a>> {
     match tokens.next() {
         Some(token) => token,
-        None => bail!("parser: EOF"),
+        None => bail!("EOF"),
     }
 }
 
@@ -293,7 +290,7 @@ fn consume(expected: Punctuation, tokens: &mut Peekable<Tokens>) -> Result<()> {
 }
 
 fn unexpected_token(token: &Token) -> OffsetError {
-    OffsetError::new(token.offset(), anyhow!("parser: unexpected '{token}'"))
+    OffsetError::new(token.offset(), anyhow!("unexpected '{token}'"))
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -441,7 +438,7 @@ impl<'a> Tokens<'a> {
     fn peek(&self) -> Result<u8> {
         match self.input.as_bytes().get(self.offset).copied() {
             Some(c) => Ok(c),
-            None => bail!("parser: EOF"),
+            None => bail!("EOF"),
         }
     }
 
