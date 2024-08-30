@@ -2,6 +2,8 @@
   "name": "gali",
   "displayName": "gali",
   "description": "Gali language support for Visual Studio Code",
+  "publisher": "callum-oakley",
+  "repository": "https://github.com/callum-oakley/gali",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.92.0"
@@ -20,6 +22,11 @@
       "language": "gali",
       "scopeName": "source.gali",
       "path": "./syntaxes/gali.tmLanguage.json"
-    }]
+    }],
+    "configurationDefaults": {
+      "[gali]": {
+        "editor.wordSeparators": "#\\.()[];,='\""
+      }
+    }
   }
 }
