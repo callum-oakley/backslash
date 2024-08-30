@@ -157,13 +157,13 @@ nil = \ifNil ifCons.ifNil;
 
 cons = \head tail ifNil ifCons.ifCons head tail;
 
-listEq = \a b.a
+listEq = \elemEq a b.a
   (b
     true
     \headB tailB.false)
   \headA tailA.b
     false
-    \headB tailB.and (eq headA headB) (listEq tailA tailB);
+    \headB tailB.and (elemEq headA headB) (listEq elemEq tailA tailB);
 
 head = \list.list
   nil
@@ -187,8 +187,8 @@ rev = foldl (flip cons) nil;
 
 foldComp = foldr comp id;
 
-! listEq (map dec [0, 1, 2]) [-1, 0, 1];
-! listEq (rev "rev") "ver";
+! listEq eq (map dec [0, 1, 2]) [-1, 0, 1];
+! listEq eq (rev "rev") "ver";
 
 # String ###########################################################################################
 # Encoded as a List of Char (which is to say, a List of Int)
@@ -209,5 +209,5 @@ stringToInt =
       (neg (posStringToInt (tail s)))
       (posStringToInt s);
 
-! listEq (intToString 42) "42";
+! listEq eq (intToString 42) "42";
 ! eq (stringToInt "42") 42;
