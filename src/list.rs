@@ -13,10 +13,10 @@ pub fn encode(mut terms: impl Iterator<Item = Term>) -> Term {
 pub fn decode(mut term: Term) -> Result<Vec<Term>> {
     let mut terms = Vec::new();
     while term != new_nil() {
-        term = term.try_unabs()?.try_unabs()?;
-        let (var0_head, tail) = term.try_unapp()?;
-        let (var0, head) = var0_head.try_unapp()?;
-        ensure!(var0 == Term::Var(0), "not a cons");
+        term = term.decode_abs()?.decode_abs()?;
+        let (var0_head, tail) = term.decode_app()?;
+        let (var0, head) = var0_head.decode_app()?;
+        ensure!(var0 == Term::Var(0), "decoding cons");
         terms.push(head);
         term = tail;
     }

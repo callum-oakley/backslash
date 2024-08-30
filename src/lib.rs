@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_errors_doc)]
 
-use anyhow::{anyhow, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use sugar::{OffsetError, Sugar};
 use term::Term;
 
@@ -22,7 +22,9 @@ pub fn run(mut files: Vec<(&str, &str)>, input: &[u8]) -> Result<Vec<u8>> {
     }
     Sugar::parse(&term)
         .and_then(|sugar| Sugar::desugar(&sugar))
-        .and_then(|term| bytes::decode(Term::app(term, bytes::encode(input)).reduce()))
+        .and_then(|term| {
+            bytes::decode(Term::app(term, bytes::encode(input)).reduce()).context("decoding output")
+        })
         .map_err(|err| offset_to_file_line_col(&files, err))
 }
 
@@ -59,7 +61,7 @@ fn offset_to_file_line_col(files: &[(&str, &str)], err: Error) -> Error {
                 }
             }
 
-            anyhow!("{} at {}:{}:{}", err.source, files[file].0, line, col)
+            anyhow!("{:#} at {}:{}:{}", err.source, files[file].0, line, col)
         }
         None => err,
     }

@@ -19,19 +19,19 @@ impl Term {
         Term::App(Box::new(s), Box::new(t))
     }
 
-    pub fn try_unabs(self) -> Result<Self> {
+    pub fn decode_abs(self) -> Result<Self> {
         if let Term::Abs(body) = self {
             Ok(*body)
         } else {
-            bail!("not an abstraction");
+            bail!("decoding abstraction");
         }
     }
 
-    pub fn try_unapp(self) -> Result<(Self, Self)> {
+    pub fn decode_app(self) -> Result<(Self, Self)> {
         if let Term::App(s, t) = self {
             Ok((*s, *t))
         } else {
-            bail!("not an application");
+            bail!("decoding application");
         }
     }
 

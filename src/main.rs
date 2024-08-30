@@ -54,7 +54,7 @@ fn main() {
         let style = anstyle::Style::new()
             .bold()
             .fg_color(Some(anstyle::AnsiColor::Red.into()));
-        eprintln!("{style}error:{style:#} {err}");
+        eprintln!("{style}error:{style:#} {err:#}");
         process::exit(1);
     }
 }

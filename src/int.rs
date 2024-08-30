@@ -20,9 +20,13 @@ pub fn encode(n: i64) -> Term {
 
 pub fn decode(mut term: Term) -> Result<i64> {
     let mut trits = Vec::new();
-    term = term.try_unabs()?.try_unabs()?.try_unabs()?.try_unabs()?;
+    term = term
+        .decode_abs()?
+        .decode_abs()?
+        .decode_abs()?
+        .decode_abs()?;
     while term != Term::Var(3) {
-        let (s, t) = term.try_unapp()?;
+        let (s, t) = term.decode_app()?;
         trits.push(match s {
             Term::Var(2) => -1,
             Term::Var(1) => 0,

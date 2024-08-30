@@ -267,8 +267,8 @@ fn peek<'a, 'b>(tokens: &'b mut Peekable<Tokens<'a>>) -> Result<&'b Token<'a>> {
             // We need to return an owned error but peeking only gives us a reference so flatten the
             // error in to a new anyhow::Error while taking care to properly forward OffsetError.
             .map_err(|err| match err.downcast_ref::<OffsetError>() {
-                Some(err) => anyhow!(OffsetError::new(err.offset, anyhow!("{}", err.source))),
-                None => anyhow!("{err}"),
+                Some(err) => anyhow!(OffsetError::new(err.offset, anyhow!("{:#}", err.source))),
+                None => anyhow!("{err:#}"),
             }),
         None => bail!("EOF"),
     }
