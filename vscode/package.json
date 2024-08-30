@@ -1,0 +1,25 @@
+{
+  "name": "gali",
+  "displayName": "gali",
+  "description": "Gali language support for Visual Studio Code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "gali",
+      "aliases": ["Gali", "gali"],
+      "extensions": ["gl"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "gali",
+      "scopeName": "source.gali",
+      "path": "./syntaxes/gali.tmLanguage.json"
+    }]
+  }
+}
